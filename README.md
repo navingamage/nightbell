@@ -75,11 +75,46 @@ duration of a call and pays a latency penalty for every hop, so it is a
 long-lived region-pinned process. Everything else is request-shaped and runs on
 Cloudflare.
 
-## Running it
+## Seeing it work, with no API key and no phone number
 
 ```bash
 make install
-make test          # 100+ tests, no API keys needed — every provider is faked
+make demo
+```
+
+That drives a real `Session` through six scripted calls and prints the
+conversation with the machinery exposed next to it — which triage rule fired and
+on which words, when urgency changed, and time-to-first-audio per turn:
+
+```
+  caller  I came downstairs and the basement is full of water, it smells
+          terrible, I think it's the sewer, and it's still coming up
+  agent   Okay, that's a serious one and I'm treating it as an emergency.
+  agent   What's the address of the property?
+  ⚡ dispatch_now — water.cat3.sewage, water.active
+     "sewer" → Category 3 black water (sewage) — a health hazard that cannot
+               wait for morning
+     "still coming" → Water is still flowing — every minute of delay increases
+                      the loss
+```
+
+The scenarios in `media/src/harness/scenarios.ts` are the calls that matter
+commercially and the ones that matter for safety: the 2am sewage backup that has
+to page someone, the gas smell that must never be handled by an agent, and the
+Tuesday quote request that must *not* wake anyone up. Add `--live` to swap the
+scripted stand-in for real Claude.
+
+The harness has already paid for itself twice. It found that `water.cat3.sewage`
+required the phrase "backed up" and so missed a caller saying "I think it's the
+sewer" — the single most important escalation in the system, missing the most
+natural way to report it. It then found that a `Session` which never receives
+Twilio's `mark` events treats every caller turn as a barge-in and silently
+discards the intake. Both are regression-tested now.
+
+## Running the tests
+
+```bash
+make test          # 130 tests, no API keys — every provider is faked
 make typecheck
 ```
 

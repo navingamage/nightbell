@@ -131,8 +131,12 @@ export const RULES: TriageRule[] = [
     reason: "Category 3 black water (sewage) — a health hazard that cannot wait for morning",
     patterns: [
       /\bsewage\b/,
-      /\bsewer\b[^.]{0,20}\b(?:back(?:ed|ing)?\s*up|overflow)/,
-      /\bback(?:ed|ing)?\s*up\b[^.]{0,20}\bsewer\b/,
+      // Bare "sewer" counts. A caller who says "I think it's the sewer" is
+      // describing Category 3 water whether or not they reach for the phrase
+      // "backed up", and requiring the phrase meant the single most important
+      // escalation in the system missed the most natural way to report it.
+      // Found by the harness on the sewage-2am scenario.
+      /\bsewer\b/,
       /\bseptic\b/,
       /\bblack\s*water\b/,
       /\btoilet\b[^.]{0,30}\b(?:overflow|backed up)/,

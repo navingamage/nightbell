@@ -267,6 +267,38 @@ describe("Session: barge-in", () => {
   });
 });
 
+describe("Session: mark handling", () => {
+  it("stops treating the agent as speaking once the mark comes back", async () => {
+    // Twilio's mark event is the only signal that audio actually finished
+    // playing. If it never arrives, the turn controller believes the agent is
+    // still talking forever and classifies every later caller turn as a
+    // barge-in — which aborts generation and silently discards the tool calls
+    // that turn produced, so the intake collects nothing. Found by the offline
+    // harness, which originally swallowed marks the way an inert fake does.
+    const { session, recogniser, model, socket } = setup();
+    await session.start();
+
+    const mark = socket.sent.find((m) => m.includes("utterance-end"));
+    expect(mark).toBeDefined();
+    session.onMark("utterance-end");
+
+    model.queue.push({
+      sentences: ["Got it."],
+      tools: [
+        { id: "tu_1", name: "record_details", input: { caller_name: "Dana Whitfield" } },
+      ],
+    });
+    model.queue.push({ sentences: ["And the address?"] });
+
+    speak(session);
+    recogniser.emit("Dana Whitfield");
+
+    await vi.waitFor(() =>
+      expect(session.snapshot.collected["caller_name"]).toBe("Dana Whitfield"),
+    );
+  });
+});
+
 describe("Session: booking", () => {
   it("refuses to book before the required fields are collected", async () => {
     const { session, recogniser, model } = setup();

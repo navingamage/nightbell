@@ -47,6 +47,13 @@ describe("triage: water categories", () => {
     expect(triage("our septic tank is overflowing").category).toBe("cat3");
   });
 
+  it("classifies a bare mention of the sewer as category 3", () => {
+    // Callers rarely say "category three" or even "backed up". They say "I
+    // think it's the sewer", and that has to be enough.
+    expect(triage("I think it's the sewer").category).toBe("cat3");
+    expect(triage("it smells terrible, might be the sewer line").category).toBe("cat3");
+  });
+
   it("classifies a dishwasher leak as category 2", () => {
     expect(triage("the dishwasher leaked all over the kitchen").category).toBe("cat2");
   });

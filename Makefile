@@ -1,4 +1,4 @@
-.PHONY: install test test-media test-control typecheck dev deploy-media deploy-control migrate clean
+.PHONY: install demo demo-live test test-media test-control typecheck dev deploy-media deploy-control migrate clean
 
 # Everything below runs with no API keys. The provider adapters are faked in
 # tests, so the call loop, triage and turn-taking are all exercised offline.
@@ -6,6 +6,15 @@
 install:
 	cd media && npm install
 	cd control && npm install
+
+# Drive a real Session through scripted calls, with the triage decisions and
+# latency budget printed alongside the conversation. No keys, no phone number.
+demo:
+	cd media && npm run harness
+
+# The same scenarios against the real model. Needs ANTHROPIC_API_KEY.
+demo-live:
+	cd media && npm run harness -- --live
 
 test: test-media test-control
 
