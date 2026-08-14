@@ -1,0 +1,14 @@
+name = "nightbell-control"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "public"
+
+# D1 holds tenants, call records, and jobs. The media server is stateless; this
+# is the only durable state in the system.
+[[d1_databases]]
+binding = "DB"
+database_name = "nightbell-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# CONTROL_PLANE_TOKEN is the shared secret the media server authenticates with.
+# Set it as an encrypted secret rather than a plaintext var:
+#   wrangler pages secret put CONTROL_PLANE_TOKEN

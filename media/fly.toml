@@ -1,0 +1,36 @@
+app = "nightbell-media"
+primary_region = "iad"
+
+# Every hop on the audio path costs us turn latency, so the media server is
+# pinned to one region close to the Twilio media edge rather than spread out.
+# See docs/latency.md for where the millisecond budget actually goes.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # A live call holds an open WebSocket. Scaling a machine to zero underneath it
+  # would drop the call, so machines stay running.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    # Each concurrent call is one Twilio WebSocket plus one STT and one TTS
+    # socket. This is deliberately conservative until real load data exists.
+    soft_limit = 20
+    hard_limit = 25
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "15s"
+  method = "GET"
+  path = "/health"
+  timeout = "2s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"

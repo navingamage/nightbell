@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nightbell — the after-hours line for restoration contractors</title>
+<meta name="description" content="nightbell answers your phone at 2am, runs a full water-damage intake, and pages your on-call tech when it is a real emergency. Built for restoration contractors.">
+<link rel="canonical" href="https://nightbell.antipodetech.com/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230d1117'/><path d='M50 22 C36 22 30 33 30 46 L30 60 L24 70 L76 70 L70 60 L70 46 C70 33 64 22 50 22 Z' fill='none' stroke='%23f2b544' stroke-width='7' stroke-linejoin='round'/><path d='M42 76 C42 82 46 85 50 85 C54 85 58 82 58 76' fill='none' stroke='%23f2b544' stroke-width='7' stroke-linecap='round'/></svg>">
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f4f5f8;
+    --ink: #14161f;
+    --muted: #5c6070;
+    --line: #e2e4ea;
+    --accent: #b06d00;
+    --alarm: #b3261e;
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --panel: #161b25;
+      --ink: #eef0f7;
+      --muted: #9aa0b8;
+      --line: #242942;
+      --accent: #f2b544;
+      --alarm: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--accent); }
+  h1, h2, h3 { line-height: 1.2; letter-spacing: -0.02em; }
+  h2 { margin-top: 3rem; font-size: 1.5rem; }
+  h3 { margin-bottom: .3rem; font-size: 1.05rem; }
+  header { text-align: center; padding: 4rem 0 2rem; }
+  header svg { width: 76px; height: 76px; }
+  header h1 { font-size: 2.6rem; margin: 1rem 0 .3rem; }
+  .tagline { color: var(--muted); font-size: 1.15rem; margin: 0 auto; max-width: 32rem; }
+  .lede { font-size: 1.1rem; }
+  .status {
+    display: inline-block; margin-top: 1.6rem; padding: .45rem 1rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    color: var(--muted); font-size: .9rem;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 1.1rem 1.3rem; margin: .8rem 0;
+  }
+  .card p:last-child { margin-bottom: 0; }
+  .muted { color: var(--muted); }
+  .grid { display: grid; gap: .8rem; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  .transcript {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 1.2rem 1.3rem; margin: 1rem 0;
+    font-size: .96rem;
+  }
+  .transcript p { margin: .55rem 0; }
+  .who { color: var(--muted); font-weight: 600; }
+  .flag {
+    display: block; margin-top: 1rem; padding-top: .9rem;
+    border-top: 1px dashed var(--line);
+    color: var(--alarm); font-size: .88rem; font-weight: 600;
+  }
+  .price { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.02em; }
+  ul { padding-left: 1.15rem; }
+  li { margin: .35rem 0; }
+  footer {
+    margin-top: 4rem; padding: 2rem 0 3rem;
+    border-top: 1px solid var(--line); color: var(--muted); font-size: .92rem;
+  }
+  .cta {
+    display: inline-block; margin-top: 1rem; padding: .7rem 1.4rem;
+    background: var(--accent); color: #10131a; text-decoration: none;
+    border-radius: 999px; font-weight: 650;
+  }
+  @media (prefers-color-scheme: dark) { .cta { color: #10131a; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-hidden="true">
+    <path d="M50 22 C36 22 30 33 30 46 L30 60 L24 70 L76 70 L70 60 L70 46 C70 33 64 22 50 22 Z"
+          fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round" style="color: var(--accent)"/>
+    <path d="M42 76 C42 82 46 85 50 85 C54 85 58 82 58 76"
+          fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" style="color: var(--accent)"/>
+  </svg>
+  <h1>nightbell</h1>
+  <p class="tagline">The after-hours line for water damage restoration. It answers on the first ring, runs a real intake, and wakes your tech only when it should.</p>
+  <p class="status">In private beta with restoration contractors</p>
+</header>
+
+<p class="lede">A burst supply line at 2am is a five to fifteen thousand dollar job. It goes to whoever picks up the phone. Most nights, that is not you &mdash; it is the franchise with a call centre, or the competitor two towns over whose owner sleeps with the phone on the pillow.</p>
+
+<p>An answering service does not fix this. They take a name and a number and a vague note about water, and you still have to call the customer back and have the actual conversation before you can decide whether to get dressed. The intake is the work. Handing it to someone who does not know what category three water is just moves the work to 6am.</p>
+
+<h2>What it actually does</h2>
+
+<p>nightbell picks up, works through the full intake a restoration job needs, and puts a complete ticket in front of you. By the time you read it, you know whether to roll a truck.</p>
+
+<div class="grid">
+  <div class="card">
+    <h3>The whole intake</h3>
+    <p class="muted">Callback number first, then source, category, affected areas, standing water, access, carrier and claim number. Not a name and a message.</p>
+  </div>
+  <div class="card">
+    <h3>Triage you can audit</h3>
+    <p class="muted">Sewage, an active leak, a sagging ceiling, a newborn in the house &mdash; each escalates by a fixed rule, and every escalation shows you which rule fired and why.</p>
+  </div>
+  <div class="card">
+    <h3>It knows when to stop</h3>
+    <p class="muted">Gas, sparking, someone hurt, or a caller who just wants a person &mdash; it transfers immediately instead of trying to be helpful.</p>
+  </div>
+  <div class="card">
+    <h3>You can interrupt it</h3>
+    <p class="muted">Talk over it and it stops, the way a person does. Callers standing in water do not wait politely for a prompt to finish.</p>
+  </div>
+</div>
+
+<h2>A call, as it happens</h2>
+
+<div class="transcript">
+  <p><span class="who">2:14am &mdash;</span> <em>Ring.</em></p>
+  <p><span class="who">nightbell:</span> Buckeye Restoration, this is the after-hours line. What's the best number to reach you on, in case we get cut off?</p>
+  <p><span class="who">Caller:</span> It's five one two, five five five, oh one four four. There's water everywhere, I don't know what happened.</p>
+  <p><span class="who">nightbell:</span> Got it. Tell me what's happening.</p>
+  <p><span class="who">Caller:</span> I came downstairs and the whole basement's got — I think it's the sewer, it smells awful, and it's still coming up.</p>
+  <p><span class="who">nightbell:</span> Okay. I'm treating this as an emergency and getting someone out to you tonight. What's the address?</p>
+  <span class="flag">↑ Escalated to dispatch — category 3 (sewage) + water still active. On-call paged at 2:14am.</span>
+</div>
+
+<p class="muted">The escalation is not a judgement call the software made in the moment. Those two conditions are written down, they fire the same way on every call, and the reasoning is attached to the record.</p>
+
+<h2>What you get in the morning</h2>
+
+<ul>
+  <li>A job ticket with every intake field filled in</li>
+  <li>The full transcript and the recording</li>
+  <li>Which triage rules fired, and the caller's exact words that fired them</li>
+  <li>An SMS to the caller confirming someone is coming</li>
+</ul>
+
+<p>The transcript matters more than it sounds. You are letting something answer your phone at 2am; you should be able to read back exactly what it told a customer, and so should your adjuster.</p>
+
+<h2>Pricing</h2>
+
+<div class="card">
+  <p class="price">$499 / month</p>
+  <p class="muted">Includes 50 calls. $4 per call after that. No per-minute billing, no setup fee, cancel whenever.</p>
+  <p>One captured emergency job pays for the year.</p>
+</div>
+
+<h2>Getting started</h2>
+
+<p>You forward your after-hours line to a number we give you. Nothing else changes &mdash; same number on your truck, same number on your website. Forward it at 5pm, take it back at 7am, or leave it on permanently.</p>
+
+<p>Setup takes about twenty minutes, and most of that is us learning your service area, your on-call rotation, and how you want the greeting to sound.</p>
+
+<p><a class="cta" href="mailto:nightbell@antipodetech.com?subject=nightbell%20beta">Ask about the beta</a></p>
+
+<footer>
+  <p>nightbell is built by Antipode Technologies. Questions, or want to see it run on your own line: <a href="mailto:nightbell@antipodetech.com">nightbell@antipodetech.com</a>.</p>
+  <p class="muted">Triage categories follow the IICRC S500 standard for water damage restoration. nightbell is not an emergency service &mdash; for gas, fire, or injury, callers are directed to hang up and dial 911.</p>
+  <p class="muted"><a href="https://antipodetech.com/">antipodetech.com</a></p>
+</footer>
+
+</div>
+</body>
+</html>

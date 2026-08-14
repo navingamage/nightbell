@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets. Every provider key and the control-plane shared token live here.
+.env
+.env.*
+!.env.example
+
+# Wrangler / D1 local state
+.wrangler/
+control/.wrangler/
+
+# Fly
+.fly/
+
+.DS_Store
+*.log
