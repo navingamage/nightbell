@@ -14,10 +14,13 @@
  *   npm run harness              # every scenario, faked model
  *   npm run harness sewage-2am   # one scenario
  *   npm run harness --live       # real Claude, needs ANTHROPIC_API_KEY
+ *
+ * `--live` reads the key from the environment or from `media/.env`.
  */
 
 import { encode } from "../call/audio.js";
 import { type CallRecord, Session, type TenantConfig } from "../call/session.js";
+import { loadDotEnv } from "../env.js";
 import { ClaudeModel } from "../providers/claude.js";
 import type {
   ConversationTurn,
@@ -172,6 +175,7 @@ function acknowledge(heard: string): string {
 async function runScenario(scenario: Scenario, live: boolean): Promise<boolean> {
   const recogniser = new ScriptedRecogniser();
   const synthesiser = new PrintingSynthesiser();
+  const settle = settler(synthesiser, live);
   const model: LanguageModel = live
     ? new ClaudeModel({ apiKey: process.env["ANTHROPIC_API_KEY"] ?? "" })
     : new ScriptedModel();
@@ -321,12 +325,60 @@ async function runScenario(scenario: Scenario, live: boolean): Promise<boolean> 
   return false;
 }
 
-/** Let the session's async work finish before inspecting it. */
-function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 400));
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Build the "wait for the session to finish reacting" function for a run.
+ *
+ * The scripted model answers in a fixed ~400ms, so a fixed pause covers it
+ * exactly. A live model does not: time to first sentence varies with load, and
+ * a turn that files a tool call costs two round trips, with the second reply
+ * landing seconds after the first. A fixed pause long enough for that worst
+ * case would be paid on every turn of every scenario, and one that isn't long
+ * enough fails the scenario for a reason that has nothing to do with the
+ * scenario: the assertions read the session before it has finished answering.
+ *
+ * So for live runs, watch what the agent is actually saying and call the turn
+ * settled once it has gone quiet. FLOOR keeps a slow first sentence from being
+ * mistaken for silence, and CAP stops a wedged turn from hanging the run.
+ */
+function settler(
+  synthesiser: PrintingSynthesiser,
+  live: boolean,
+): () => Promise<void> {
+  if (!live) return () => sleep(400);
+
+  const POLL = 250;
+  const QUIET = 2_500;
+  const FLOOR = 3_000;
+  const CAP = 45_000;
+
+  return async () => {
+    const startedAt = performance.now();
+    let seen = synthesiser.lines.length;
+    let changedAt = startedAt;
+
+    for (;;) {
+      await sleep(POLL);
+      const now = performance.now();
+
+      if (synthesiser.lines.length !== seen) {
+        seen = synthesiser.lines.length;
+        changedAt = now;
+      }
+
+      if (now - startedAt < FLOOR) continue;
+      if (now - changedAt >= QUIET) return;
+      if (now - startedAt >= CAP) return;
+    }
+  };
 }
 
 async function main(): Promise<void> {
+  loadDotEnv();
+
   const args = process.argv.slice(2);
   const live = args.includes("--live");
   const wanted = args.find((a) => !a.startsWith("--"));

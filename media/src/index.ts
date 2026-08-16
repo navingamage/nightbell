@@ -12,10 +12,12 @@ import { Session, type TenantConfig } from "./call/session.js";
 import { connectTwiml, mediaPayload, parseInbound } from "./call/twilio.js";
 import { loadConfig } from "./config.js";
 import { ControlPlane } from "./control.js";
+import { loadDotEnv } from "./env.js";
 import { CartesiaSynthesiser } from "./providers/cartesia.js";
 import { ClaudeModel } from "./providers/claude.js";
 import { DeepgramRecogniser } from "./providers/deepgram.js";
 
+loadDotEnv();
 const config = loadConfig();
 const control = new ControlPlane(config);
 

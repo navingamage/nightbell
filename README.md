@@ -128,6 +128,11 @@ The process refuses to boot without them, deliberately: a voice agent with a
 missing key does not fail visibly, it answers the phone and then fails on the
 first turn.
 
+Copy `media/.env.example` to `media/.env` and fill it in; the server and the
+harness both read it at startup. Real environment variables take precedence, so
+production is unaffected: on Fly these arrive as secrets and no file exists.
+`make demo-live` needs only `ANTHROPIC_API_KEY`.
+
 ## Deployment
 
 Two independent deploys.
