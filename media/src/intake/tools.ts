@@ -85,9 +85,12 @@ export const ALL_TOOLS: ToolDefinition[] = [RECORD_DETAILS, BOOK_JOB, TRANSFER_T
 
 export interface PromptContext {
   businessName: string;
+  serviceArea: string;
+}
+
+export interface TurnContext {
   /** Local time as the caller experiences it, e.g. "2:14 AM". */
   localTime: string;
-  serviceArea: string;
   /** Fields still outstanding, so the model knows what to steer toward. */
   missing: string[];
   /** Set when deterministic triage has already escalated this call. */
@@ -102,11 +105,16 @@ export interface PromptContext {
  * paragraph read aloud is unbearable. The second is the explicit permission to
  * transfer — the failure mode of a helpful model is that it keeps trying, and
  * on a 2am flood call the right answer is very often a human.
+ *
+ * Everything here is a constant for the tenant, which is what makes it worth
+ * caching. The parts that change during a call live in buildTurnContext()
+ * below, and deliberately not here: prompt caching matches on an exact prefix,
+ * so a clock reading in the second line would invalidate the tools and the
+ * whole prompt behind it on every single turn.
  */
 export function buildSystemPrompt(ctx: PromptContext): string {
   const lines = [
     `You answer the phone for ${ctx.businessName}, a water damage restoration company serving ${ctx.serviceArea}.`,
-    `It is currently ${ctx.localTime} where the caller is.`,
     "",
     "You are talking to someone on a phone, out loud. That governs everything:",
     "- Speak in short sentences. One idea per sentence.",
@@ -124,17 +132,42 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "",
     "If the caller asks for a person, transfer immediately. Do not try to handle it yourself.",
     "If anything sounds like a safety emergency, transfer. Never reassure someone that a hazard is fine.",
+    "",
+    "Where the state of this call is given to you below, treat it as authoritative.",
+  ];
+
+  return lines.join("\n");
+}
+
+/**
+ * Build the per-turn state block.
+ *
+ * This is the half of the old system prompt that changes as the call moves:
+ * the clock, what is still missing, and whether the rules have already
+ * escalated. It reads like system-prompt material and used to live there, but
+ * it is re-derived on every turn, so keeping it in the system prompt meant no
+ * two requests in a call ever shared a prefix.
+ *
+ * It is delivered as the last thing the model reads instead, which costs
+ * nothing in cache terms, and for a running conversation puts the current
+ * state nearest the reply, where recency helps rather than hurts.
+ */
+export function buildTurnContext(ctx: TurnContext): string {
+  const lines = [
+    "Current state of this call:",
+    `- It is ${ctx.localTime} where the caller is.`,
   ];
 
   if (ctx.missing.length > 0) {
-    lines.push("", `Still needed: ${ctx.missing.join(", ")}.`);
+    lines.push(`- Still needed: ${ctx.missing.join(", ")}.`);
+  } else {
+    lines.push("- Every required detail has been collected.");
   }
 
   if (ctx.escalation) {
     lines.push(
-      "",
-      `This call has already been classified as ${ctx.escalation.urgency} because: ${ctx.escalation.reasons.join("; ")}.`,
-      "Treat that as settled fact. Do not reassess it and do not tell the caller it might be less serious than it is.",
+      `- This call is classified as ${ctx.escalation.urgency} because: ${ctx.escalation.reasons.join("; ")}.`,
+      "  Treat that as settled fact. Do not reassess it and do not tell the caller it might be less serious than it is.",
     );
   }
 

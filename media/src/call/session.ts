@@ -20,7 +20,7 @@
 
 import type { WebSocket } from "ws";
 import { REQUIRED_KEYS, isBookable, missingRequired, nextField } from "../intake/schema.js";
-import { ALL_TOOLS, buildSystemPrompt } from "../intake/tools.js";
+import { ALL_TOOLS, buildSystemPrompt, buildTurnContext } from "../intake/tools.js";
 import { type TriageResult, applyModelOpinion, triage } from "../intake/triage.js";
 import type {
   ConversationTurn,
@@ -184,9 +184,15 @@ export class Session {
     const controller = new AbortController();
     this.generation = controller;
 
+    // Split deliberately: `prompt` is identical on every turn of every call for
+    // this tenant and can be cached, `context` is re-derived each turn and
+    // cannot. See buildSystemPrompt() for why that split is load-bearing.
     const prompt = buildSystemPrompt({
       businessName: this.deps.tenant.businessName,
       serviceArea: this.deps.tenant.serviceArea,
+    });
+
+    const context = buildTurnContext({
       localTime: new Date().toLocaleTimeString("en-US", {
         timeZone: this.deps.tenant.timezone,
         hour: "numeric",
@@ -205,6 +211,7 @@ export class Session {
 
     const response = this.deps.model.respond({
       system: prompt,
+      context,
       history: this.history,
       tools: ALL_TOOLS,
       signal: controller.signal,

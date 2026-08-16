@@ -93,7 +93,19 @@ export interface ModelResponse {
 
 export interface LanguageModel {
   respond(params: {
+    /**
+     * Instructions that do not change for the duration of a call. Kept separate
+     * from `context` so a provider can cache it: caching is a prefix match, and
+     * a single changed byte anywhere in the system prompt re-bills everything
+     * after it.
+     */
     system: string;
+    /**
+     * Per-turn state: the time, what is still outstanding, whether triage has
+     * escalated. Changes almost every turn, so it belongs after the cache
+     * breakpoint rather than in `system`, however naturally it reads there.
+     */
+    context?: string;
     history: ConversationTurn[];
     tools: ToolDefinition[];
     signal: AbortSignal;

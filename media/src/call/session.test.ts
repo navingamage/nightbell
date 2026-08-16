@@ -69,16 +69,20 @@ class FakeModel implements LanguageModel {
   /** Queued replies, each a list of sentences plus optional tool calls. */
   queue: Array<{ sentences: string[]; tools?: ToolCall[] }> = [];
   prompts: string[] = [];
+  /** Per-turn state, which the session sends alongside the system prompt. */
+  contexts: string[] = [];
   lastTools: ToolDefinition[] = [];
   lastHistory: ConversationTurn[] = [];
 
   respond(params: {
     system: string;
+    context?: string;
     history: ConversationTurn[];
     tools: ToolDefinition[];
     signal: AbortSignal;
   }): ModelResponse {
     this.prompts.push(params.system);
+    this.contexts.push(params.context ?? "");
     this.lastTools = params.tools;
     this.lastHistory = [...params.history];
     const next = this.queue.shift() ?? { sentences: ["Okay."] };
@@ -181,9 +185,34 @@ describe("Session: triage authority", () => {
     recogniser.emit("the sewer backed up into the basement");
     await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(0));
 
-    const prompt = model.prompts.at(-1)!;
-    expect(prompt).toContain("dispatch_now");
-    expect(prompt).toMatch(/settled fact/i);
+    // The escalation rides in the per-turn context rather than the system
+    // prompt, so that the system prompt stays byte-identical across turns and
+    // can be cached. What the model is told is unchanged.
+    const context = model.contexts.at(-1)!;
+    expect(context).toContain("dispatch_now");
+    expect(context).toMatch(/settled fact/i);
+  });
+
+  it("keeps the system prompt identical across turns, so it can be cached", async () => {
+    const { session, recogniser, model } = setup();
+    await session.start();
+
+    speak(session);
+    recogniser.emit("the sewer backed up into the basement");
+    await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(0));
+
+    speak(session);
+    recogniser.emit("it's twelve twenty one maple street");
+    await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(1));
+
+    // Prompt caching matches on an exact prefix. A clock reading or a running
+    // "still needed" list in here would mean no two turns ever share one, and
+    // the cache would silently become a surcharge rather than a saving.
+    expect(new Set(model.prompts).size).toBe(1);
+
+    // And the state that does move between turns stays out of the cached half.
+    expect(model.prompts.at(-1)).not.toContain("dispatch_now");
+    expect(model.contexts.at(-1)).toContain("dispatch_now");
   });
 
   it("does not let the model's opinion lower the rules' verdict", async () => {

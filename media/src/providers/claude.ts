@@ -11,6 +11,17 @@
  * Streaming is mandatory rather than an optimisation. Time-to-first-audio is
  * the number the caller experiences, and waiting for a complete response before
  * synthesising any of it adds the entire generation time to every single turn.
+ *
+ * Prompt caching is close to mandatory too, for cost rather than latency. A
+ * fifteen-turn intake resends the tool definitions, the system prompt, and the
+ * entire transcript so far on every turn, and all of it is identical to what
+ * was sent a few seconds earlier. Two breakpoints below turn nearly all of that
+ * re-reading into cache reads at about a tenth of the input price.
+ *
+ * Caching matches on an exact byte prefix, which is the whole reason `system`
+ * and `context` arrive here as separate strings. Anything that changes between
+ * turns must sit after the last breakpoint or it invalidates everything behind
+ * it and the caching silently becomes a surcharge instead of a saving.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -44,6 +55,7 @@ export class ClaudeModel implements LanguageModel {
 
   respond(params: {
     system: string;
+    context?: string;
     history: ConversationTurn[];
     tools: ToolDefinition[];
     signal: AbortSignal;
@@ -74,8 +86,20 @@ export class ClaudeModel implements LanguageModel {
           {
             model: this.model,
             max_tokens: this.maxTokens,
-            system: params.system,
-            messages: toAnthropicMessages(params.history),
+            // Tools render before the system prompt, so a breakpoint on the
+            // last system block caches both together. Both are constants for
+            // the tenant, so this entry is shared by every concurrent call.
+            system: [
+              {
+                type: "text",
+                text: params.system,
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            messages: withCacheBreakpoint(
+              toAnthropicMessages(params.history),
+              params.context ?? "",
+            ),
             ...(params.tools.length > 0 ? { tools: params.tools } : {}),
           },
           { signal: params.signal },
@@ -89,6 +113,7 @@ export class ClaudeModel implements LanguageModel {
         });
 
         const message = await stream.finalMessage();
+        logCacheUsage(message.usage);
 
         const tail = splitter.flush();
         if (tail) {
@@ -140,6 +165,76 @@ export class ClaudeModel implements LanguageModel {
 
     return { sentences, toolCalls };
   }
+}
+
+/**
+ * Mark the end of the reusable conversation prefix, then put the volatile
+ * per-turn context after it.
+ *
+ * The breakpoint goes on the last block of the transcript the model has already
+ * seen, so the following turn reads the conversation so far back out of cache
+ * instead of paying full input price for it a second time. Everything before
+ * the breakpoint comes along: tools, system prompt, every earlier turn.
+ *
+ * Putting the breakpoint *before* the context rather than at the very end is
+ * the whole trick. The other way round, the clock reading in the context would
+ * be part of every cached prefix, no two turns would ever match, and the result
+ * would be a write on every turn and a read on none.
+ */
+function withCacheBreakpoint(
+  messages: Anthropic.MessageParam[],
+  context: string,
+): Anthropic.MessageParam[] {
+  const out = [...messages];
+  const last = out[out.length - 1];
+
+  if (last) {
+    const blocks: Anthropic.ContentBlockParam[] =
+      typeof last.content === "string"
+        ? [{ type: "text", text: last.content }]
+        : [...last.content];
+
+    // toAnthropicMessages only ever builds text and tool_result blocks, and
+    // those are the two the narrowing needs: not every block type in the union
+    // accepts cache_control, and a thinking block in particular does not.
+    const tail = blocks[blocks.length - 1];
+    if (tail && (tail.type === "text" || tail.type === "tool_result")) {
+      blocks[blocks.length - 1] = { ...tail, cache_control: { type: "ephemeral" } };
+    }
+
+    out[out.length - 1] = { ...last, content: blocks };
+  }
+
+  if (!context) return out;
+
+  // The context has to be the last thing in the request, and content can only
+  // hang off a user message, so an assistant-terminated history, or an empty
+  // one on the opening turn, gets a fresh user turn to carry it.
+  const tailMessage = out[out.length - 1];
+  if (tailMessage?.role === "user" && Array.isArray(tailMessage.content)) {
+    tailMessage.content.push({ type: "text", text: context });
+  } else {
+    out.push({ role: "user", content: [{ type: "text", text: context }] });
+  }
+
+  return out;
+}
+
+/**
+ * Report cache effectiveness when NIGHTBELL_CACHE_STATS is set.
+ *
+ * Worth a switch, because a broken cache is silent by construction: the request
+ * still succeeds and the reply is still correct, it just costs several times
+ * what it should. If the read count stays at zero across a call, something
+ * upstream is changing the prefix and the caching has become a surcharge.
+ */
+function logCacheUsage(usage: Anthropic.Usage): void {
+  if (!process.env["NIGHTBELL_CACHE_STATS"]) return;
+  console.log(
+    `[cache] read ${usage.cache_read_input_tokens ?? 0}, ` +
+      `written ${usage.cache_creation_input_tokens ?? 0}, ` +
+      `uncached ${usage.input_tokens}`,
+  );
 }
 
 /**
