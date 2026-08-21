@@ -154,6 +154,11 @@ export function buildSystemPrompt(ctx: PromptContext): string {
  */
 export function buildTurnContext(ctx: TurnContext): string {
   const lines = [
+    // Addressed to the model, and said so explicitly. A cheap model handed this
+    // as an ordinary message will otherwise read the whole block down the phone
+    // line, list markers and all, which is exactly what happened the first time
+    // this ran live.
+    "Note to you, not spoken by the caller and not to be repeated aloud.",
     "Current state of this call:",
     `- It is ${ctx.localTime} where the caller is.`,
   ];

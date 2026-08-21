@@ -355,6 +355,36 @@ describe("Session: booking", () => {
   });
 });
 
+describe("Session: tool rounds", () => {
+  it("stops re-prompting the model once the round cap is reached", async () => {
+    // A model that answers every tool result with another tool call has no
+    // terminating condition, and every lap speaks. On a live run against a cheap
+    // model this ran for forty-eight seconds inside one caller turn, asking the
+    // same question over and over. The cap ends the turn instead.
+    const { session, recogniser, model, synthesiser } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+
+    for (let i = 0; i < 10; i++) {
+      model.queue.push({
+        sentences: ["What's the address?"],
+        tools: [{ id: `tu_${i}`, name: "record_details", input: { situation: "flood" } }],
+      });
+    }
+
+    speak(session);
+    recogniser.emit("my basement is flooded");
+
+    await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(1));
+    // Let any further round it was going to run actually run.
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The greeting, plus at most one utterance per round.
+    expect(synthesiser.spoken.length).toBeLessThanOrEqual(4);
+    expect(model.queue.length).toBeGreaterThan(5);
+  });
+});
+
 describe("Session: teardown", () => {
   let ctx: ReturnType<typeof setup>;
 

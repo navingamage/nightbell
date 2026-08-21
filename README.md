@@ -64,7 +64,7 @@ Where the milliseconds actually go is in [docs/latency.md](docs/latency.md).
 media/      Real-time media server (Node/TypeScript, Fly.io)
   src/call/       audio codec, turn-taking, playback pacing, session
   src/intake/     intake script, triage rules, model tools
-  src/providers/  Deepgram, Cartesia, Claude, behind swappable interfaces
+  src/providers/  Deepgram, Cartesia, OpenRouter, behind swappable interfaces
 control/    Control plane (Cloudflare Pages Functions + D1)
 site/       Marketing site (static, its own Pages project)
 docs/       Design notes
@@ -102,28 +102,40 @@ The scenarios in `media/src/harness/scenarios.ts` are the calls that matter
 commercially and the ones that matter for safety: the 2am sewage backup that has
 to page someone, the gas smell that must never be handled by an agent, and the
 Tuesday quote request that must *not* wake anyone up. Add `--live` to swap the
-scripted stand-in for real Claude.
+scripted stand-in for a real model, and `--model=` to run the same six calls
+against a different one.
 
-The harness has already paid for itself twice. It found that `water.cat3.sewage`
-required the phrase "backed up" and so missed a caller saying "I think it's the
-sewer" — the single most important escalation in the system, missing the most
-natural way to report it. It then found that a `Session` which never receives
-Twilio's `mark` events treats every caller turn as a barge-in and silently
-discards the intake. Both are regression-tested now.
+The harness has already paid for itself five times. It found that
+`water.cat3.sewage` required the phrase "backed up" and so missed a caller saying
+"I think it's the sewer", the single most important escalation in the system,
+missing the most natural way to report it. It then found that a `Session` which
+never receives Twilio's `mark` events treats every caller turn as a barge-in and
+silently discards the intake.
+
+The first live runs found three more, all of which would have reached a customer.
+Tool results feed back into the model so it can say something about them, and a
+model that answers with another tool call gets another round, which nothing
+bounded: one caller turn ran for forty-eight seconds, asking the same question
+over and over while the turn never yielded. The per-turn state block, delivered
+as an ordinary message, got read down the phone line, list markers and all. And a
+provider returning 429 rejected both halves of the response while the session was
+only ever going to await one of them, so an unhandled rejection took down the
+whole process and every other call on it. All five are regression-tested now.
 
 ## Running the tests
 
 ```bash
-make test          # 130 tests, no API keys — every provider is faked
+make test          # 147 tests, no API keys, every provider is faked
 make typecheck
 ```
 
 The test suite covers the μ-law codec against the G.711 reference, the
-turn-taking state machine, the triage rules, and the session orchestration
-including the barge-in ordering guarantee.
+turn-taking state machine, the triage rules, the OpenRouter wire format against
+a fake server, and the session orchestration including the barge-in ordering
+guarantee.
 
 To run the media server against real providers you need keys for Deepgram,
-Cartesia, Anthropic and Twilio — see `media/src/config.ts` for the full list.
+Cartesia, OpenRouter and Twilio. See `media/src/config.ts` for the full list.
 The process refuses to boot without them, deliberately: a voice agent with a
 missing key does not fail visibly, it answers the phone and then fails on the
 first turn.
@@ -131,7 +143,36 @@ first turn.
 Copy `media/.env.example` to `media/.env` and fill it in; the server and the
 harness both read it at startup. Real environment variables take precedence, so
 production is unaffected: on Fly these arrive as secrets and no file exists.
-`make demo-live` needs only `ANTHROPIC_API_KEY`.
+`make demo-live` needs only `OPENROUTER_API_KEY`.
+
+## Choosing the model
+
+The conversational layer goes through [OpenRouter](https://openrouter.ai), so
+which model answers the phone is `OPENROUTER_MODEL` rather than a code change.
+That matters more here than it would elsewhere: an intake turn is a short reply
+over a growing transcript, which nearly every instruction-tuned model can do, and
+what separates them on a phone call is time to first token and price. Neither
+ranking holds still.
+
+The way to choose is to run the scenarios, which takes about forty seconds and
+costs a couple of cents:
+
+```bash
+cd media && npm run harness -- --live --model=google/gemini-2.5-flash-lite
+```
+
+The difference between models is not subtle, and it is not where you would
+expect. `gemini-2.5-flash-lite` is a third of the price and holds a perfectly
+natural conversation, but it loses the thread of the intake, asking for an
+address it was given two turns earlier, and on one run it did not transfer a
+caller who asked outright for a person. `gemini-2.5-flash` runs the intake and
+transfers on request, and errs by escalating a Tuesday quote enquiry that should
+have been left for the morning. Both are wrong some of the time; only one of them
+is wrong in the direction this system is built to be wrong in, which is why it is
+the default.
+
+Neither is finished. The remaining failures are the prompt over-weighting
+transfer, not the model, and that is the next thing to fix.
 
 ## Deployment
 

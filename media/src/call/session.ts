@@ -180,7 +180,24 @@ export class Session {
     await this.generateReply();
   }
 
-  private async generateReply(): Promise<void> {
+  /**
+   * How many times one caller turn may bounce between the model and its tools.
+   *
+   * Tool results feed straight back into the model so it can say something
+   * about them, and a model that answers with another tool call gets another
+   * round. Nothing in that loop is guaranteed to terminate: a cheap model that
+   * keeps filing the same field re-asks the same question forever, and because
+   * every lap synthesises speech the caller hears the question over and over
+   * while the turn never yields. Observed on a live run, forty-eight seconds
+   * into a single turn.
+   *
+   * Three laps is more than a real intake turn needs. A caller who says their
+   * name, the address and that the water is still running in one breath files
+   * three fields in one call, not three rounds.
+   */
+  private static readonly MAX_TOOL_ROUNDS = 3;
+
+  private async generateReply(round = 0): Promise<void> {
     const controller = new AbortController();
     this.generation = controller;
 
@@ -247,7 +264,7 @@ export class Session {
 
       const calls = await response.toolCalls;
       if (!controller.signal.aborted && calls.length > 0) {
-        await this.runTools(calls);
+        await this.runTools(calls, round);
       }
     } catch (err) {
       if (!controller.signal.aborted) this.fail(err instanceof Error ? err : new Error(String(err)));
@@ -260,7 +277,7 @@ export class Session {
     this.send(markMessage(this.deps.streamSid, "utterance-end"));
   }
 
-  private async runTools(calls: ToolCall[]): Promise<void> {
+  private async runTools(calls: ToolCall[], round: number): Promise<void> {
     for (const call of calls) {
       switch (call.name) {
         case "record_details": {
@@ -329,8 +346,14 @@ export class Session {
     }
 
     // Tool results are new information; let the model say something about them.
+    // Only up to the round cap: past that the turn has stopped converging, and
+    // the right move is to stop talking and let the caller speak.
     if (!this.closed && this.record.outcome === "in_progress") {
-      await this.generateReply();
+      if (round + 1 >= Session.MAX_TOOL_ROUNDS) {
+        console.warn(`[${this.deps.callSid}] tool round cap reached, yielding the turn`);
+        return;
+      }
+      await this.generateReply(round + 1);
     }
   }
 
