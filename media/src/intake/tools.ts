@@ -17,7 +17,7 @@ export const RECORD_DETAILS: ToolDefinition = {
   description:
     "Record facts the caller has given you. Call this as soon as you learn something, " +
     "even mid-conversation, and even if you only learned one field. Never wait until " +
-    "the end of the call. Only include fields the caller actually stated — do not guess " +
+    "the end of the call. Only include fields the caller actually stated. Do not guess " +
     "or fill in plausible values.",
   input_schema: {
     type: "object",
@@ -68,10 +68,12 @@ export const BOOK_JOB: ToolDefinition = {
 export const TRANSFER_TO_HUMAN: ToolDefinition = {
   name: "transfer_to_human",
   description:
-    "Hand the call to the on-call person immediately. Use this whenever the caller asks " +
-    "for a person, is distressed beyond what you can help with, or describes something " +
-    "outside water damage restoration. Transferring is always an acceptable outcome; " +
-    "never talk a caller out of wanting one.",
+    "Hand the call to the on-call person immediately. Use this when the caller asks for a " +
+    "person in any words, when the call is not a water damage job at all (a bill, a " +
+    "complaint, a job already underway, a wrong number), or when the caller cannot get " +
+    "through the intake with you. Never talk a caller out of wanting a person. Do not use " +
+    "this because a call is severe or the caller is upset: severe calls are the work, and " +
+    "the hazards that genuinely need a person never reach you.",
   input_schema: {
     type: "object",
     properties: {
@@ -101,10 +103,22 @@ export interface TurnContext {
  * Build the system prompt.
  *
  * Two things in here are doing most of the work. The first is the instruction
- * to speak in short sentences: a caller on a phone cannot skim, and a
- * paragraph read aloud is unbearable. The second is the explicit permission to
- * transfer — the failure mode of a helpful model is that it keeps trying, and
- * on a 2am flood call the right answer is very often a human.
+ * to speak in short sentences: a caller on a phone cannot skim, and a paragraph
+ * read aloud is unbearable.
+ *
+ * The second is the transfer rule, which is a list of cases rather than a
+ * judgement call, and which spends as many words on when not to transfer as on
+ * when to. An earlier version said to transfer if anything sounded like a
+ * safety emergency and left the rest to the model. Live, that produced an agent
+ * that handed over a caller with a newborn in the house because she was
+ * worried, and handed over a Tuesday quote enquiry because a quote is not
+ * literally a restoration job. Both are the failure the deterministic triage
+ * table exists to prevent, arriving through the one door left open.
+ *
+ * The correction rests on something true about the architecture: the hazards
+ * that genuinely need a person never reach the model at all, because triage
+ * transfers them before generateReply() is called. So the model can be told
+ * plainly that a call still in front of it is a call it is meant to run.
  *
  * Everything here is a constant for the tenant, which is what makes it worth
  * caching. The parts that change during a call live in buildTurnContext()
@@ -129,9 +143,22 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "",
     "Call record_details the moment you learn anything, not at the end.",
     "Read the address and callback number back before booking, and only book after they confirm.",
+    "When you call book_job, say you are booking it. Do not say it is booked, and do not give",
+    "an arrival time, until book_job has answered you. It can refuse, and a caller told a crew",
+    "is coming when none is has been lied to by the only part of this you cannot take back.",
     "",
-    "If the caller asks for a person, transfer immediately. Do not try to handle it yourself.",
-    "If anything sounds like a safety emergency, transfer. Never reassure someone that a hazard is fine.",
+    "Transfer to a person in these cases, and no others:",
+    "- The caller asks for one, in any words. Do it on the first ask and do not negotiate.",
+    "- The call is not a water damage job: a bill, a complaint, a job already underway, a wrong number.",
+    "- The caller cannot get through the intake with you, and asking again is not working.",
+    "",
+    "Do not transfer because a call is severe, or urgent, or because the caller is frightened.",
+    "Those calls are the work. The hazards that genuinely need a person, gas and fire and live",
+    "electricity and injury, are handled before the call ever reaches you, so anything you are",
+    "still talking to is a call you are meant to run yourself.",
+    "",
+    "A quote, an estimate, or damage from weeks ago is ordinary business. Take the details and",
+    "book a normal visit. Never transfer one, and never treat one as urgent.",
     "",
     "Where the state of this call is given to you below, treat it as authoritative.",
   ];
@@ -173,6 +200,8 @@ export function buildTurnContext(ctx: TurnContext): string {
     lines.push(
       `- This call is classified as ${ctx.escalation.urgency} because: ${ctx.escalation.reasons.join("; ")}.`,
       "  Treat that as settled fact. Do not reassess it and do not tell the caller it might be less serious than it is.",
+      "  It is also already handled: the classification is what sends a crew tonight. It is not a",
+      "  sign that the call needs a person, and it is not a reason to transfer.",
     );
   }
 

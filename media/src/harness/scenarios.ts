@@ -3,7 +3,7 @@
  *
  * Each scenario is a sequence of caller utterances plus the outcome the system
  * is supposed to reach. They are written from the calls that actually matter
- * commercially and the ones that matter for safety — the 2am sewage backup that
+ * commercially and the ones that matter for safety: the 2am sewage backup that
  * has to page someone, the gas smell that must never be handled by an agent,
  * and the mundane Tuesday quote request that must *not* wake anyone up.
  *
@@ -20,10 +20,14 @@ export interface Scenario {
    * What the caller says, in the order the intake asks for it.
    *
    * The agent drives the conversation, so a scripted caller answers in script
-   * order. Real callers volunteer things early and out of sequence — the
-   * `situation` answers below do exactly that — but a scenario that wandered
+   * order. Real callers volunteer things early and out of sequence, and the
+   * `situation` answers below do exactly that, but a scenario that wandered
    * freely would be testing the model's extraction rather than the machinery
    * this harness exists to make visible.
+   *
+   * A scenario that expects a booking ends with the caller confirming the
+   * read-back, because the agent is forbidden to book before that confirmation.
+   * Leave it off and the call is correct in every respect and still unbooked.
    */
   utterances: string[];
   expect: {
@@ -53,6 +57,10 @@ export const SCENARIOS: Scenario[] = [
       "State Farm",
       "no I haven't called them yet",
       "yeah I'll be here all night",
+      // The agent is required to read the address and number back and wait for
+      // a yes before booking, so a script that stops at the last question can
+      // never reach a booking. This is the caller confirming the read-back.
+      "yeah that's right",
     ],
     expect: {
       urgency: "dispatch_now",
@@ -88,6 +96,7 @@ export const SCENARIOS: Scenario[] = [
       "yeah, it's Allstate",
       "not yet, I'll call them in the morning",
       "yeah I'm home",
+      "yep, that's all correct",
     ],
     expect: { urgency: "priority", outcome: "booked", rules: ["water.cat1"] },
   },

@@ -1,9 +1,9 @@
 /**
  * Session tests, against fake providers.
  *
- * These exercise the two guarantees the orchestrator exists to provide — that a
+ * These exercise the two guarantees the orchestrator exists to provide, that a
  * caller can always interrupt, and that the model cannot talk the system out of
- * an escalation — plus the ordering detail that makes barge-in actually work.
+ * an escalation, plus the ordering detail that makes barge-in actually work.
  * Everything is faked, so the suite runs in milliseconds and needs no keys.
  */
 
@@ -18,7 +18,7 @@ import type {
   ToolDefinition,
   Transcript,
 } from "../providers/types.js";
-import { type CallRecord, Session, type TenantConfig } from "./session.js";
+import { type CallRecord, REQUIRED_KEYS, Session, type TenantConfig } from "./session.js";
 import { encode } from "./audio.js";
 
 const TENANT: TenantConfig = {
@@ -114,7 +114,7 @@ function setup() {
   const recogniser = new FakeRecogniser();
   const synthesiser = new FakeSynthesiser();
   const model = new FakeModel();
-  // Typed explicitly so the argument tuples are inferred — an untyped vi.fn()
+  // Typed explicitly so the argument tuples are inferred. An untyped vi.fn()
   // infers `[]` and every mock.calls[n][m] read becomes a type error.
   const persist = vi.fn(async (_record: CallRecord): Promise<void> => {});
   const transfer = vi.fn(
@@ -301,7 +301,7 @@ describe("Session: mark handling", () => {
     // Twilio's mark event is the only signal that audio actually finished
     // playing. If it never arrives, the turn controller believes the agent is
     // still talking forever and classifies every later caller turn as a
-    // barge-in — which aborts generation and silently discards the tool calls
+    // barge-in, which aborts generation and silently discards the tool calls
     // that turn produced, so the intake collects nothing. Found by the offline
     // harness, which originally swallowed marks the way an inert fake does.
     const { session, recogniser, model, socket } = setup();
@@ -352,6 +352,38 @@ describe("Session: booking", () => {
     // The model is told what is missing rather than silently ignored.
     const result = model.lastHistory.find((t) => t.role === "tool_result");
     expect(result && "content" in result ? result.content : "").toContain("still_needed");
+  });
+});
+
+describe("Session: booking order", () => {
+  it("applies the filings before the booking, whatever order the model listed them in", async () => {
+    // A model that answers the last question and books in one breath emits both
+    // calls in one response, and it does not always put them in a helpful order.
+    // Booking first leaves the intake a field short, the gate refuses, and the
+    // caller has already been told a crew is on the way. Seen live.
+    const { session, recogniser, model } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+
+    const everything = Object.fromEntries(REQUIRED_KEYS.map((key) => [key, "given"]));
+
+    model.queue.push({
+      sentences: ["Booking that now."],
+      tools: [
+        {
+          id: "tu_book",
+          name: "book_job",
+          input: { confirmed_address: "400 W St", confirmed_callback: "5125551234" },
+        },
+        { id: "tu_record", name: "record_details", input: everything },
+      ],
+    });
+    model.queue.push({ sentences: ["You're all set."] });
+
+    speak(session);
+    recogniser.emit("yes that's all correct");
+
+    await vi.waitFor(() => expect(session.snapshot.outcome).toBe("booked"));
   });
 });
 

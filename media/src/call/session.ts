@@ -107,7 +107,7 @@ export class Session {
     deps.recogniser.onTranscript((t) => {
       this.turn.pushTranscript(t.text, t.isFinal);
       // The recogniser's own endpoint is better informed than raw energy, so
-      // act on it when it fires — turn.ts keeps energy as the backstop.
+      // act on it when it fires. turn.ts keeps energy as the backstop.
       if (t.speechFinal) this.turn.closeTurn();
     });
 
@@ -144,7 +144,7 @@ export class Session {
    * Order matters. Abort generation first so nothing new is produced, then stop
    * playback, which clears the carrier's queue. Reversed, a chunk generated
    * between the clear and the abort would be sent *after* the flush and play
-   * over the caller — the exact artefact this is here to prevent.
+   * over the caller, which is the exact artefact this is here to prevent.
    */
   private handleBargeIn(): void {
     this.generation?.abort();
@@ -235,7 +235,7 @@ export class Session {
     });
 
     // Set endpointing for the answer we are about to invite, before the
-    // question is even finished playing — the caller may start replying early.
+    // question is even finished playing, since the caller may start replying early.
     const upcoming = nextField(this.collected);
     if (upcoming) this.turn.setEndpointProfile(upcoming.endpoint);
 
@@ -278,7 +278,13 @@ export class Session {
   }
 
   private async runTools(calls: ToolCall[], round: number): Promise<void> {
-    for (const call of calls) {
+    // Run the filings before the booking, whatever order the model listed them
+    // in. A model that answers the last question and books in one breath emits
+    // both, and if `book_job` runs first the intake is still one field short,
+    // the booking gate refuses, and the caller has already been told a crew is
+    // coming. Sorting here makes that impossible rather than unlikely. Transfers
+    // go last because transferring ends the call and skips whatever follows.
+    for (const call of [...calls].sort((a, b) => TOOL_ORDER(a.name) - TOOL_ORDER(b.name))) {
       switch (call.name) {
         case "record_details": {
           const { urgency_opinion, ...fields } = call.input as Record<string, unknown> & {
@@ -290,7 +296,7 @@ export class Session {
             }
           }
           if (urgency_opinion) {
-            // Advisory only — applyModelOpinion cannot lower the rules' verdict.
+            // Advisory only: applyModelOpinion cannot lower the rules' verdict.
             this.triageState = applyModelOpinion(
               this.triageState,
               urgency_opinion as TriageResult["urgency"],
@@ -415,6 +421,13 @@ export class Session {
   get snapshot(): Readonly<CallRecord> {
     return { ...this.record, collected: { ...this.collected } };
   }
+}
+
+/** Filings first, then the booking they enable, then anything that ends the call. */
+function TOOL_ORDER(name: string): number {
+  if (name === "record_details") return 0;
+  if (name === "book_job") return 1;
+  return 2;
 }
 
 export { REQUIRED_KEYS };
