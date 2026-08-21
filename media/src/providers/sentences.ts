@@ -14,7 +14,7 @@
  *
  * The compromise here is to flush on sentence-final punctuation, but only when
  * the punctuation is not part of an abbreviation, a decimal, or a number
- * grouping — and to force a flush once a clause gets long enough that waiting
+ * grouping, and to force a flush once a clause gets long enough that waiting
  * is worse than an imperfect break.
  */
 
@@ -23,7 +23,7 @@ const MAX_CLAUSE_CHARS = 140;
 
 /**
  * Abbreviations whose trailing period does not end a sentence. Address-heavy
- * by design — this is a restoration intake, so streets, avenues, apartment
+ * by design, because this is a restoration intake, so streets, avenues, apartment
  * numbers and compass points dominate the read-backs.
  */
 const ABBREVIATIONS = new Set([
@@ -46,7 +46,7 @@ function endsWithAbbreviation(buffer: string): boolean {
  * digit rather than a space.
  *
  * The subtle part is the buffer-final case. When a period is the last thing in
- * the buffer there is genuinely not enough information yet — "about 3." and
+ * the buffer there is genuinely not enough information yet: "about 3." and
  * "about 3.5" are identical prefixes, and committing to a break produces the
  * synthesiser reading "there's about three" with finished intonation before
  * the "point five" shows up. So a trailing mark is never a break during push();

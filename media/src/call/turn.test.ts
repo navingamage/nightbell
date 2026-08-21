@@ -105,7 +105,7 @@ describe("TurnController", () => {
       tc.setEndpointProfile("terse");
       feed(tc, speech, 10);
       tc.pushTranscript("yes", true);
-      feed(tc, silence, 20); // 400 ms — past terse's 380 ms
+      feed(tc, silence, 20); // 400 ms, past terse's 380 ms
       expect(events.onCallerTurnEnd).toHaveBeenCalledOnce();
     });
 
@@ -113,13 +113,13 @@ describe("TurnController", () => {
       tc.setEndpointProfile("open");
       feed(tc, speech, 10);
       tc.pushTranscript("so I came downstairs and", true);
-      feed(tc, silence, 40); // 800 ms — a pause, not an ending
+      feed(tc, silence, 40); // 800 ms, a pause, not an ending
       expect(events.onCallerTurnEnd).not.toHaveBeenCalled();
 
       feed(tc, speech, 10);
       tc.pushTranscript("there was water everywhere", true);
       feed(tc,
-        silence, 60); // 1200 ms — past open's 1100 ms
+        silence, 60); // 1200 ms, past open's 1100 ms
       expect(events.onCallerTurnEnd).toHaveBeenCalledWith(
         "so I came downstairs and there was water everywhere",
       );

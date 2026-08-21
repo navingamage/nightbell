@@ -50,7 +50,7 @@ describe("intake script", () => {
         collected[field.key] = "answered";
       }
     }
-    // Carrier is unanswered, so carrier is next — not the claim number.
+    // Carrier is unanswered, so carrier is next, not the claim number.
     expect(nextField(collected)?.key).toBe("insurance_carrier");
 
     collected["insurance_carrier"] = "";

@@ -3,7 +3,7 @@
  *
  * POST is written by the media server when a call ends. It is idempotent on
  * call_sid, because the media server retries on failure and a dropped socket
- * can produce a second close — booking the same job twice because a network
+ * can produce a second close, booking the same job twice because a network
  * blip caused a retry would be a genuinely expensive bug.
  *
  * GET backs the owner's dashboard.

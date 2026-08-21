@@ -11,8 +11,8 @@
  * whether someone gets woken up at 3am, and they are catastrophic when the
  * answer decides whether a family spends the night in a house with sewage in
  * it. So urgency is decided here, by rules that are readable, testable, and
- * identical on every call — and the model's own assessment can only ever
- * escalate the result, never soften it.
+ * identical on every call. The model's own assessment can only ever escalate
+ * the result, never soften it.
  *
  * The rules are deliberately biased toward over-escalation. The asymmetry is
  * stark: a false positive costs the contractor one unnecessary phone call, and
@@ -71,7 +71,7 @@ export interface TriageRule {
 /**
  * The rule table.
  *
- * Ordering does not matter — every rule is evaluated and the results combine by
+ * Ordering does not matter: every rule is evaluated and the results combine by
  * taking the maximum urgency. That is intentional: rules must not be able to
  * cancel each other out, only to raise the floor.
  */
@@ -79,13 +79,13 @@ export const RULES: TriageRule[] = [
   {
     id: "hazard.gas",
     urgency: "transfer_human",
-    reason: "Caller reports a gas smell — this is a utility emergency, not a restoration job",
+    reason: "Caller reports a gas smell. This is a utility emergency, not a restoration job",
     patterns: [/\bsmell(?:s|ing)?\s+(?:like\s+)?gas\b/, /\bgas\s+leak\b/, /\bsmell\s+of\s+gas\b/],
   },
   {
     id: "hazard.electrical",
     urgency: "transfer_human",
-    reason: "Water and live electricity reported together — electrocution risk",
+    reason: "Water and live electricity reported together: electrocution risk",
     patterns: [
       /\bspark(?:s|ing|ed)?\b/,
       /\bshock(?:ed|ing)?\b/,
@@ -98,7 +98,7 @@ export const RULES: TriageRule[] = [
   {
     id: "hazard.injury",
     urgency: "transfer_human",
-    reason: "Someone may be hurt — this call needs a person, immediately",
+    reason: "Someone may be hurt. This call needs a person, immediately",
     patterns: [
       /\b(?:someone|somebody|anyone|he|she|they|i)\s+(?:is\s+|was\s+|got\s+)?(?:hurt|injured|bleeding)\b/,
       /\bcall\s+9\s*1\s*1\b/,
@@ -110,13 +110,13 @@ export const RULES: TriageRule[] = [
   {
     id: "hazard.fire",
     urgency: "transfer_human",
-    reason: "Active fire reported — emergency services first, restoration afterwards",
+    reason: "Active fire reported: emergency services first, restoration afterwards",
     patterns: [/\b(?:fire|it)\s+is\s+still\s+burning\b/, /\bstill\s+on\s+fire\b/, /\bactive\s+fire\b/],
   },
   {
     id: "hazard.structural",
     urgency: "dispatch_now",
-    reason: "Possible structural failure — a saturated ceiling can come down without warning",
+    reason: "Possible structural failure: a saturated ceiling can come down without warning",
     patterns: [
       /\bceiling\b[^.]{0,30}\b(?:sag|sagging|bulge|bulging|bowing|coming down|collapse)/,
       /\b(?:sag|sagging|bulge|bulging|bowing)\b[^.]{0,30}\bceiling\b/,
@@ -128,7 +128,7 @@ export const RULES: TriageRule[] = [
     id: "water.cat3.sewage",
     urgency: "dispatch_now",
     category: "cat3",
-    reason: "Category 3 black water (sewage) — a health hazard that cannot wait for morning",
+    reason: "Category 3 black water (sewage): a health hazard that cannot wait for morning",
     patterns: [
       /\bsewage\b/,
       // Bare "sewer" counts. A caller who says "I think it's the sewer" is
@@ -152,7 +152,7 @@ export const RULES: TriageRule[] = [
   {
     id: "water.active",
     urgency: "dispatch_now",
-    reason: "Water is still flowing — every minute of delay increases the loss",
+    reason: "Water is still flowing, and every minute of delay increases the loss",
     patterns: [
       /\bstill\s+(?:running|flowing|leaking|coming|pouring|going)\b/,
       /\bcan'?t\s+(?:shut|turn)\s+(?:it\s+)?off\b/,
@@ -166,7 +166,7 @@ export const RULES: TriageRule[] = [
     id: "water.cat2",
     urgency: "priority",
     category: "cat2",
-    reason: "Category 2 grey water — contaminated but not immediately hazardous",
+    reason: "Category 2 grey water: contaminated but not immediately hazardous",
     patterns: [/\bdishwasher\b/, /\bwashing\s+machine\b/, /\bwasher\b/, /\bsump\s*pump\b/, /\baquarium\b/],
   },
   {
@@ -186,7 +186,7 @@ export const RULES: TriageRule[] = [
   {
     id: "occupant.vulnerable",
     urgency: "dispatch_now",
-    reason: "A vulnerable occupant is in the property — displacement risk raises the priority",
+    reason: "A vulnerable occupant is in the property, and displacement risk raises the priority",
     patterns: [
       /\b(?:baby|infant|newborn|toddler)\b/,
       /\b(?:elderly|my\s+mother|my\s+father|nursing\s+home)\b/,
@@ -198,7 +198,7 @@ export const RULES: TriageRule[] = [
   {
     id: "property.uninhabitable",
     urgency: "dispatch_now",
-    reason: "Property may be uninhabitable tonight — the caller may need lodging arranged",
+    reason: "Property may be uninhabitable tonight, so the caller may need lodging arranged",
     patterns: [
       /\bnowhere\s+to\s+(?:sleep|stay|go)\b/,
       /\bcan'?t\s+stay\s+here\b/,
@@ -212,7 +212,7 @@ export const RULES: TriageRule[] = [
  * Words that flip the meaning of a match.
  *
  * "There's no sewage, it's just clean water from the heater" must not trip the
- * sewage rule. This is a shallow heuristic — it looks back a short window
+ * sewage rule. This is a shallow heuristic: it looks back a short window
  * before the match, and it will not catch every construction English can build.
  * That is an accepted limit rather than an oversight: because the failure mode
  * of a missed negation is over-escalation, and over-escalation is the cheap
@@ -225,7 +225,7 @@ const NEGATORS =
 /**
  * How far back to look for a negator, in characters.
  *
- * Deliberately short — about two or three words. A wider window starts
+ * Deliberately short, about two or three words. A wider window starts
  * swallowing negators that belong to a neighbouring clause, so "I don't want to
  * wait, the sewer backed up" would suppress the sewage rule. Since a missed
  * escalation is the expensive direction, the window errs on the side of firing.
@@ -261,7 +261,7 @@ const CATEGORY_RANK: Record<WaterCategory, number> = { cat1: 0, cat2: 1, cat3: 2
  * Run the rule table over a stretch of caller speech.
  *
  * Call this on the full accumulated transcript rather than the latest utterance
- * alone — the caller may mention the sewage in their first sentence and the
+ * alone: the caller may mention the sewage in their first sentence and the
  * address in their fifth, and urgency established early must not decay.
  */
 export function triage(transcript: string): TriageResult {
@@ -307,7 +307,7 @@ export function triage(transcript: string): TriageResult {
  * Combine deterministic triage with the model's own read of the call.
  *
  * The model gets a vote, but only upward. If the rules say `dispatch_now` and
- * the model says `routine`, the answer is `dispatch_now` — the model does not
+ * the model says `routine`, the answer is `dispatch_now`. The model does not
  * get to talk the system out of an escalation it did not make in the first
  * place. This is the function that enforces the promise at the top of the file,
  * and it is the reason it is a two-line function with a name rather than an

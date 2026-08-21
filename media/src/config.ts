@@ -2,7 +2,7 @@
  * Configuration, read once at boot.
  *
  * Every value is required and the process refuses to start without it. A voice
- * agent that boots with a missing API key does not fail visibly — it answers
+ * agent that boots with a missing API key does not fail visibly. It answers
  * the phone, fails on the first turn, and hangs up on a customer. Failing at
  * deploy time is enormously preferable to failing at 2am on someone's flood.
  */

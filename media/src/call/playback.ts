@@ -3,7 +3,7 @@
  *
  * Twilio accepts frames as fast as you send them and queues whatever it gets.
  * Dumping a whole synthesised sentence at once therefore "works", right up
- * until the caller interrupts — at which point several seconds of audio are
+ * until the caller interrupts, at which point several seconds of audio are
  * already committed and a `clear` produces an abrupt mid-word cut rather than a
  * natural stop.
  *
@@ -20,7 +20,7 @@ import { FRAME_MS, chunkFrames } from "./audio.js";
  * How far ahead of realtime to run, in milliseconds.
  *
  * Too small and any scheduling hiccup produces an audible gap. Too large and
- * interruptions feel laggy. 200 ms is about ten frames — comfortably more than
+ * interruptions feel laggy. 200 ms is about ten frames, comfortably more than
  * the event loop's worst case here, and short enough that a barge-in cuts off
  * within a syllable.
  */
@@ -50,7 +50,7 @@ export class Playback {
   /**
    * Stream one synthesised utterance to the caller.
    *
-   * Returns when the audio has been handed over — not when it has finished
+   * Returns when the audio has been handed over, not when it has finished
    * playing. The `mark` round trip in session.ts is what reports true
    * completion.
    */

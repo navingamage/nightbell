@@ -144,7 +144,7 @@ server.listen(config.port, () => {
  * Graceful shutdown.
  *
  * Fly sends SIGTERM on deploy. Live calls get a moment to finish and persist
- * rather than being cut off mid-sentence — a deploy should never be the reason
+ * rather than being cut off mid-sentence. A deploy should never be the reason
  * a contractor loses a job.
  */
 for (const signal of ["SIGTERM", "SIGINT"] as const) {

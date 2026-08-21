@@ -3,7 +3,7 @@
  *
  * A shared bearer token, compared in constant time. This is a
  * service-to-service boundary between two things the same person deploys, so a
- * shared secret is proportionate — but the comparison still has to be constant
+ * shared secret is proportionate, but the comparison still has to be constant
  * time, because a timing oracle on a token check is a real vulnerability
  * regardless of how private the endpoint feels.
  */
@@ -17,7 +17,7 @@ export interface Env {
  * Constant-time string comparison.
  *
  * A plain `===` on secrets leaks length and prefix information through timing.
- * The length check here is deliberately not an early return on mismatch — it
+ * The length check here is deliberately not an early return on mismatch. It
  * still runs the full comparison loop, so only the length itself is
  * observable, and that is not secret.
  */

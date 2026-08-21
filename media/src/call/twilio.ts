@@ -79,7 +79,7 @@ export function markMessage(streamSid: string, name: string): string {
  *
  * Served by the control plane on the Twilio webhook. The greeting is spoken by
  * the agent rather than by TwiML `<Say>` so that the voice is consistent from
- * the very first word — a robotic greeting followed by a natural voice is a
+ * the very first word. A robotic greeting followed by a natural voice is a
  * jarring tell, and it happens on the one turn where the caller is paying most
  * attention.
  */

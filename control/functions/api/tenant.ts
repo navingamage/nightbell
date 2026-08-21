@@ -3,7 +3,7 @@
  *
  * Called by the media server at the start of every call, so it is on the
  * critical path for answering the phone. Kept to a single indexed query for
- * that reason — anything slower here is dead air before the greeting.
+ * that reason: anything slower here is dead air before the greeting.
  */
 
 import { type Env, json, requireServiceToken } from "../lib/auth.js";

@@ -7,17 +7,17 @@
  * constantly without either party treating it as an interruption. A system
  * that waits for a clean second of silence before answering feels slow even
  * when every individual component is fast, and a system that stops dead the
- * moment it hears a sound cannot be talked to at all — the caller says "mm-hm"
+ * moment it hears a sound cannot be talked to at all: the caller says "mm-hm"
  * and the agent abandons its sentence.
  *
  * So this module holds a small explicit state machine with two separate
  * decisions in it:
  *
- *   - *Endpointing* — has the caller finished their turn? Tuned per question,
+ *   - *Endpointing*, has the caller finished their turn? Tuned per question,
  *     because "is the water still running?" and "tell me what happened" want
  *     very different amounts of patience.
  *
- *   - *Barge-in* — is the caller trying to take the floor back? Deliberately
+ *   - *Barge-in*, is the caller trying to take the floor back? Deliberately
  *     harder to trigger than mere energy, because backchannels are not
  *     interruptions.
  *
@@ -41,8 +41,8 @@ export type TurnState =
  * How long to wait for silence before deciding the caller has finished.
  *
  * These are the highest-leverage numbers in the whole system. Endpointing
- * dominates perceived latency — it is dead air the caller sits through before
- * anything else has even started — so it is worth being aggressive where the
+ * dominates perceived latency, being dead air the caller sits through before
+ * anything else has even started, so it is worth being aggressive where the
  * expected answer is short and patient where it is not.
  */
 export type EndpointProfile =
@@ -115,8 +115,8 @@ export interface TurnEvents {
   onCallerTurnEnd(utterance: string): void;
   /**
    * The caller took the floor back mid-sentence. Whoever is generating audio
-   * must stop immediately and the already-buffered audio must be discarded —
-   * on Twilio that means sending a `clear` message, because frames handed over
+   * must stop immediately and the already-buffered audio must be discarded.
+   * On Twilio that means sending a `clear` message, because frames handed over
    * are queued on their side and will otherwise keep playing for seconds.
    */
   onBargeIn(): void;
@@ -209,7 +209,7 @@ export class TurnController {
     switch (this.state) {
       case "idle":
       case "thinking": {
-        // The caller starting to talk while we are still thinking is normal —
+        // The caller starting to talk while we are still thinking is normal:
         // they are adding detail, not interrupting, since no audio is playing.
         if (this.speechFrames >= this.config.framesToOpen) {
           this.sawSpeechThisTurn = true;
@@ -228,7 +228,7 @@ export class TurnController {
 
       case "speaking": {
         // Energy alone is not enough. It has to be sustained, and it must not
-        // be a backchannel — see the note on BACKCHANNELS.
+        // be a backchannel. See the note on BACKCHANNELS.
         if (this.speechFrames >= this.config.framesToBargeIn && !isBackchannel(this.interim)) {
           this.sawSpeechThisTurn = true;
           this.events.onBargeIn();
@@ -255,8 +255,8 @@ export class TurnController {
       this.interim = "";
       this.sawSpeechThisTurn = true;
       // A final transcript arriving while the agent talks is the strongest
-      // possible barge-in signal — the recogniser is confident enough to commit
-      // to words — but a bare "okay" still must not stop the agent.
+      // possible barge-in signal, because the recogniser is confident enough to
+      // commit to words, but a bare "okay" still must not stop the agent.
       if (this.state === "speaking" && !isBackchannel(text)) {
         this.events.onBargeIn();
         this.transition("listening");

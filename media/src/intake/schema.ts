@@ -3,7 +3,7 @@
  *
  * This is the domain knowledge that makes the difference between a voice agent
  * and a useful one. A generic "AI receptionist" takes a name and a number and
- * leaves the contractor to call back and conduct the real conversation — which
+ * leaves the contractor to call back and conduct the real conversation, which
  * means the agent saved nobody any time. The point of picking a single vertical
  * is that the intake can be the *actual* intake: by the time the call ends,
  * the on-call technician knows whether to bring an extraction truck or a
@@ -31,7 +31,7 @@ export interface IntakeField {
   required: boolean;
   options?: string[];
   /**
-   * Skip the question when this returns true — usually because the answer is
+   * Skip the question when this returns true, usually because the answer is
    * already known from what the caller volunteered, or because it is moot.
    */
   skipIf?: (collected: Record<string, unknown>) => boolean;
@@ -40,8 +40,8 @@ export interface IntakeField {
 /**
  * The script, in the order a person would actually ask.
  *
- * Callback number comes first and deliberately early. Restoration calls drop —
- * people are standing in wet basements on failing phones — and a call that
+ * Callback number comes first and deliberately early. Restoration calls drop,
+ * since people are standing in wet basements on failing phones, and a call that
  * drops after thirty seconds is worthless unless there is a number to ring
  * back. Everything else is recoverable; a lost caller is not.
  */
@@ -175,8 +175,8 @@ export function isBookable(collected: Record<string, unknown>): boolean {
 /**
  * Normalise a spoken phone number into digits.
  *
- * Speech recognisers return phone numbers in wildly inconsistent shapes —
- * "five one two", "512", "5 1 2" — and sometimes with a spelled-out area code
+ * Speech recognisers return phone numbers in wildly inconsistent shapes:
+ * "five one two", "512", "5 1 2", and sometimes with a spelled-out area code
  * next to a digit-grouped exchange. This does not try to be clever about
  * validation; it collects digits and lets the caller confirm the read-back,
  * because a human confirming is more reliable than any parser.

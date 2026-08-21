@@ -9,7 +9,7 @@
  *
  * `endpointing` is set low and deliberately. Deepgram's own endpoint detection
  * has an acoustic model behind it and is better than the energy heuristic in
- * turn.ts — but it does not know what question was just asked, and turn.ts
+ * turn.ts, but it does not know what question was just asked, and turn.ts
  * does. So Deepgram is configured to report endpoints eagerly and turn.ts
  * decides whether to act on them.
  */

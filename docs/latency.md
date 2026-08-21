@@ -27,7 +27,7 @@ Every turn pays all of these, in order:
 
 ## Endpointing dominates, and it is the cheapest thing to fix
 
-Endpointing is not compute. It is *deliberate waiting* — silence held to be sure
+Endpointing is not compute. It is *deliberate waiting*: silence held to be sure
 the caller has actually finished rather than pausing mid-thought. It is the
 single largest line in the budget and the only one that can be cut without
 buying anything.
@@ -58,7 +58,7 @@ path, and the temptation to unify on it is real. Two things rule it out for the
 media leg:
 
 1. **Frames arrive every 20 ms for the duration of the call.** This is a
-   long-lived, stateful, CPU-steady workload — the opposite of what per-request
+   long-lived, stateful, CPU-steady workload, the opposite of what per-request
    edge compute is priced and shaped for.
 
 2. **Placement is not controllable.** An edge runtime may place the isolate
@@ -67,7 +67,7 @@ media leg:
    from those four is a net loss.
 
 So the split is: Fly holds the socket and the real-time loop, pinned to `iad`
-near Twilio's media edge; Cloudflare holds everything that is request-shaped —
+near Twilio's media edge; Cloudflare holds everything that is request-shaped:
 the site, the dashboard, tenant config, call records. Each part runs where its
 workload actually fits.
 
@@ -75,6 +75,6 @@ workload actually fits.
 
 `Session` records time-to-first-audio for every turn into
 `CallRecord.turnLatenciesMs`, and the control plane stores it per call. That is
-deliberately the *caller's* number — from end-of-caller-speech to first byte of
-agent audio — rather than a sum of component timings, because component timings
+deliberately the *caller's* number, from end-of-caller-speech to first byte of
+agent audio, rather than a sum of component timings, because component timings
 can all look healthy while the thing still feels slow to talk to.

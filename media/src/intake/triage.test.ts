@@ -83,7 +83,7 @@ describe("triage: active loss", () => {
   });
 
   it("stays at priority once the water is stopped", () => {
-    // Shut off and clean-water — real, billable, but nobody needs waking.
+    // Shut off and clean-water: real, billable, but nobody needs waking.
     expect(u("a supply line let go but I got the valve shut off")).toBe("priority");
   });
 });

@@ -10,7 +10,7 @@
  * consumer stops iterating and aborts the signal; the socket closes and no
  * further audio can reach the caller. A callback-based design makes it far too
  * easy to leave one last chunk in flight, and one stray chunk after a barge-in
- * is audible as the agent talking over the caller — the exact failure the
+ * is audible as the agent talking over the caller, which is the exact failure the
  * barge-in logic exists to prevent.
  */
 
@@ -63,7 +63,7 @@ export class CartesiaSynthesiser implements SpeechSynthesiser {
    * Synthesise one sentence, yielding μ-law audio as it is generated.
    *
    * Each call uses a fresh context id. Cartesia can continue an existing
-   * context to preserve prosody across sentences, which sounds better — but it
+   * context to preserve prosody across sentences, which sounds better, but it
    * also means an aborted sentence leaves the context in an indeterminate
    * state. Given how often barge-in happens on distress calls, correctness
    * after interruption is worth more than prosodic continuity.

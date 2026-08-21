@@ -19,7 +19,7 @@ export interface Transcript {
   text: string;
   /** False for interim hypotheses that may still change. */
   isFinal: boolean;
-  /** Provider's own endpoint signal, if it has one — usually better than energy. */
+  /** Provider's own endpoint signal, if it has one. Usually better than energy. */
   speechFinal?: boolean;
   confidence?: number;
 }

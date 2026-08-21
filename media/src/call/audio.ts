@@ -1,7 +1,7 @@
 /**
  * G.711 μ-law codec and frame arithmetic for the telephone audio path.
  *
- * Twilio Media Streams speak 8 kHz mono μ-law in 20 ms frames — 160 bytes of
+ * Twilio Media Streams speak 8 kHz mono μ-law in 20 ms frames: 160 bytes of
  * payload, base64-encoded, roughly fifty times a second per direction. Every
  * function here is on the hot path for a live call, so they are written to
  * allocate once and do integer arithmetic in place.
@@ -94,8 +94,8 @@ export function encode(pcm: Int16Array): Buffer {
  *
  * This is the cheap half of barge-in detection. It runs on every inbound frame
  * whether or not anyone is speaking, so it decodes without allocating an
- * intermediate array. The expensive half — deciding whether the energy is
- * actually speech rather than a door slamming — lives in turn.ts.
+ * intermediate array. The expensive half, deciding whether the energy is
+ * actually speech rather than a door slamming, lives in turn.ts.
  */
 export function frameEnergy(ulaw: Buffer): number {
   if (ulaw.length === 0) return 0;
@@ -114,7 +114,7 @@ export function frameEnergy(ulaw: Buffer): number {
  * Text-to-speech providers stream audio in chunks sized for their own
  * convenience, not ours. Twilio wants exactly 160 bytes per media message and
  * paces playback off frame count, so a caller-side jitter buffer is not
- * optional — sending ragged chunks makes speech sound rushed then stalled.
+ * optional: sending ragged chunks makes speech sound rushed then stalled.
  */
 export function chunkFrames(buf: Buffer): { frames: Buffer[]; remainder: Buffer } {
   const frames: Buffer[] = [];
@@ -138,7 +138,7 @@ export const SILENCE_FRAME: Buffer = Buffer.alloc(FRAME_BYTES, encodeSample(0));
  * Resample 16-bit PCM by linear interpolation.
  *
  * Only needed for providers that refuse 8 kHz μ-law and insist on 16 kHz PCM.
- * The preferred path avoids this entirely — both Deepgram and Cartesia can be
+ * The preferred path avoids this entirely, because both Deepgram and Cartesia can be
  * asked to speak μ-law at 8 kHz directly, which skips two conversions and the
  * latency that comes with them. Linear interpolation is not a good resampler,
  * but upsampling a band-limited 8 kHz telephone signal adds no information no

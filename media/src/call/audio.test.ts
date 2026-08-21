@@ -63,7 +63,7 @@ describe("μ-law codec", () => {
 
   it("clips rather than wrapping on out-of-range input", () => {
     // Anything past the clip point must saturate to the same loud sample, and
-    // must stay positive — a wrap would turn a shout into a shout of the
+    // must stay positive: a wrap would turn a shout into a shout of the
     // opposite sign, which is an audible crackle.
     // The clip point is 8159 in the 14-bit domain, i.e. 32636 at 16-bit, so
     // both of these are past it and must saturate to the same sample.

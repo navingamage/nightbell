@@ -2,7 +2,7 @@
  * The media server's client for the Cloudflare control plane and for Twilio.
  *
  * Tenant configuration is fetched per call rather than cached indefinitely,
- * because the field that matters most — the on-call number — is the one a
+ * because the field that matters most, the on-call number, is the one a
  * contractor changes at the worst possible moment, usually right before going
  * to bed. A stale cache there sends an emergency page to someone who is off
  * duty. A short TTL keeps the common case fast without that failure mode.
@@ -59,7 +59,7 @@ export class ControlPlane {
    * Uses Twilio's REST API to redirect the in-progress call to TwiML that dials
    * the on-call number. `<Dial>` rather than `<Redirect>` to a queue, because
    * on an emergency call the caller should hear ringing immediately rather than
-   * hold music — the ringing is itself reassurance that something is happening.
+   * hold music: the ringing is itself reassurance that something is happening.
    */
   async transfer(callSid: string, toNumber: string, reason: string): Promise<void> {
     console.info(`[${callSid}] transferring to ${toNumber}: ${reason}`);
