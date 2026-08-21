@@ -81,6 +81,20 @@ export class Session {
   private generation: AbortController | null = null;
   private turnStartedAt = 0;
   private closed = false;
+  /**
+   * Sentences already spoken during the current caller turn.
+   *
+   * A turn can call the model more than once, and a model asked to comment on a
+   * tool result will often just ask its previous question again. The caller
+   * hears the agent repeat itself word for word, which is the single most
+   * obvious tell that they are not talking to a person. Nothing said twice in
+   * one turn is ever worth hearing twice.
+   */
+  private spokenThisTurn = new Set<string>();
+  /** The last thing said, across turns, so the backstop below cannot echo it. */
+  private lastSpoken = "";
+  /** How many times each question has been asked, across the whole call. */
+  private readonly asked = new Map<string, number>();
 
   constructor(private readonly deps: SessionDeps) {
     this.playback = new Playback({
@@ -177,7 +191,34 @@ export class Session {
     }
 
     this.turn.agentThinking();
+    this.spokenThisTurn.clear();
     await this.generateReply();
+
+    // Dead air. The model answered with tool calls and no words, or with nothing
+    // at all, and the caller is now listening to silence with no idea whether
+    // the line is still up. Seen on a real call, where the caller eventually
+    // said "hello?" into it.
+    //
+    // The recovery is deterministic rather than another model round trip: ask
+    // the next outstanding question, which is the thing the intake wanted next
+    // anyway. It cannot repeat what was just said, because nothing was.
+    if (
+      !this.closed &&
+      this.spokenThisTurn.size === 0 &&
+      this.record.outcome !== "transferred" &&
+      !this.generation?.signal.aborted
+    ) {
+      const upcoming = nextField(this.collected);
+      const question = upcoming?.prompt ?? "";
+      // Asking the outstanding question is right once. Asking it again, in the
+      // same words, immediately after asking it is the failure this backstop was
+      // added to prevent, arriving from the other direction.
+      await this.say(
+        question && normalise(question) !== this.lastSpoken
+          ? question
+          : "Sorry, I didn't catch that.",
+      );
+    }
   }
 
   /**
@@ -246,13 +287,24 @@ export class Session {
       this.turn.agentStartedSpeaking();
       for await (const sentence of response.sentences) {
         if (controller.signal.aborted) break;
+        // Already said this turn, so saying it again is a defect rather than an
+        // utterance. Dropping it is better than speaking it: there is no version
+        // of the caller hearing the same question twice in a row that is good.
+        if (this.spokenThisTurn.has(normalise(sentence))) continue;
+
+        const line = this.phrase(sentence);
+        if (line === null) continue;
+
+        this.spokenThisTurn.add(normalise(sentence));
+        this.lastSpoken = normalise(sentence);
+
         if (!firstAudioAt) {
           firstAudioAt = performance.now();
           this.record.turnLatenciesMs.push(Math.round(firstAudioAt - this.turnStartedAt));
         }
-        spoken += (spoken ? " " : "") + sentence;
+        spoken += (spoken ? " " : "") + line;
         await this.playback.play(
-          this.deps.synthesiser.speak(sentence, controller.signal),
+          this.deps.synthesiser.speak(line, controller.signal),
           controller.signal,
         );
       }
@@ -264,7 +316,32 @@ export class Session {
 
       const calls = await response.toolCalls;
       if (!controller.signal.aborted && calls.length > 0) {
-        await this.runTools(calls, round);
+        const booking = await this.runTools(calls);
+
+        // Go back to the model for one of two reasons, and no others.
+        //
+        // A booking, because the caller has to be told the arrival window, or
+        // asked for whatever the gate refused over. And silence: a model that
+        // answers with a tool call and no words has filed something and left
+        // the caller listening to nothing, which is most turns for some models.
+        //
+        // Not for a filing that was accompanied by speech. The agent has
+        // already said its piece, and a model given another turn with nothing
+        // new to say repeats the question it just asked. That is what a real
+        // caller heard.
+        const silent = this.spokenThisTurn.size === 0;
+        if (
+          (booking || silent) &&
+          !this.closed &&
+          this.record.outcome !== "transferred" &&
+          !controller.signal.aborted
+        ) {
+          if (round + 1 >= Session.MAX_TOOL_ROUNDS) {
+            console.warn(`[${this.deps.callSid}] tool round cap reached, yielding the turn`);
+          } else {
+            await this.generateReply(round + 1);
+          }
+        }
       }
     } catch (err) {
       if (!controller.signal.aborted) this.fail(err instanceof Error ? err : new Error(String(err)));
@@ -277,7 +354,10 @@ export class Session {
     this.send(markMessage(this.deps.streamSid, "utterance-end"));
   }
 
-  private async runTools(calls: ToolCall[], round: number): Promise<void> {
+  /** Runs the model's tool calls. Returns whether a booking was attempted. */
+  private async runTools(calls: ToolCall[]): Promise<boolean> {
+    let booking = false;
+
     // Run the filings before the booking, whatever order the model listed them
     // in. A model that answers the last question and books in one breath emits
     // both, and if `book_job` runs first the intake is still one field short,
@@ -315,6 +395,7 @@ export class Session {
         }
 
         case "book_job": {
+          booking = true;
           if (!isBookable(this.collected)) {
             // The model tried to book early. Tell it what is missing rather
             // than booking an incomplete ticket a technician cannot act on.
@@ -346,21 +427,12 @@ export class Session {
         case "transfer_to_human": {
           const reason = String(call.input["reason"] ?? "caller requested a person");
           await this.transferToHuman(reason);
-          return;
+          return booking;
         }
       }
     }
 
-    // Tool results are new information; let the model say something about them.
-    // Only up to the round cap: past that the turn has stopped converging, and
-    // the right move is to stop talking and let the caller speak.
-    if (!this.closed && this.record.outcome === "in_progress") {
-      if (round + 1 >= Session.MAX_TOOL_ROUNDS) {
-        console.warn(`[${this.deps.callSid}] tool round cap reached, yielding the turn`);
-        return;
-      }
-      await this.generateReply(round + 1);
-    }
+    return booking;
   }
 
   private async transferToHuman(reason: string): Promise<void> {
@@ -375,9 +447,40 @@ export class Session {
     await this.close();
   }
 
+  /**
+   * What to actually say, given what was said last.
+   *
+   * A caller who did not answer the question does need to be asked again, so
+   * suppressing the repeat outright is wrong. Saying the identical sentence
+   * twice is also wrong: people do not do that, and it is the clearest possible
+   * signal to the caller that nothing is listening. So the second ask gets a
+   * lead-in that acknowledges it is a second ask, and a third consecutive one is
+   * dropped, which hands the turn to whatever else the model had to say, or
+   * failing that to the dead-air backstop.
+   *
+   * Handled here rather than in the prompt because the prompt already asks for
+   * this and models do not reliably comply. This one is cheap to make certain.
+   */
+  private phrase(sentence: string): string | null {
+    // Questions only. An acknowledgement repeating is unremarkable, and nobody
+    // has ever noticed an agent saying "thank you" twice; a question repeating
+    // is the thing that makes a caller ask whether anyone is there.
+    if (!sentence.trimEnd().endsWith("?")) return sentence;
+
+    const key = normalise(sentence);
+    const times = (this.asked.get(key) ?? 0) + 1;
+    this.asked.set(key, times);
+
+    if (times === 1) return sentence;
+    if (times === 2) return `Sorry, I still need this one. ${sentence}`;
+    return null;
+  }
+
   private async say(text: string): Promise<void> {
     const controller = new AbortController();
     this.generation = controller;
+    this.spokenThisTurn.add(normalise(text));
+    this.lastSpoken = normalise(text);
     this.turn.agentStartedSpeaking();
     this.record.transcript.push({ speaker: "agent", text, at: Date.now() });
     this.history.push({ role: "assistant", content: text });
@@ -421,6 +524,11 @@ export class Session {
   get snapshot(): Readonly<CallRecord> {
     return { ...this.record, collected: { ...this.collected } };
   }
+}
+
+/** For comparing two utterances as the caller would hear them. */
+function normalise(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 }
 
 /** Filings first, then the booking they enable, then anything that ends the call. */

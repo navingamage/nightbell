@@ -389,31 +389,156 @@ describe("Session: booking order", () => {
 
 describe("Session: tool rounds", () => {
   it("stops re-prompting the model once the round cap is reached", async () => {
-    // A model that answers every tool result with another tool call has no
-    // terminating condition, and every lap speaks. On a live run against a cheap
-    // model this ran for forty-eight seconds inside one caller turn, asking the
-    // same question over and over. The cap ends the turn instead.
+    // A refused booking sends the result back to the model, and a model that
+    // answers by trying to book again has no terminating condition. Every lap
+    // speaks, so the caller hears it. On a live run against a cheap model an
+    // unbounded version of this ran for forty-eight seconds inside one turn.
     const { session, recogniser, model, synthesiser } = setup();
     await session.start();
     session.onMark("utterance-end");
 
     for (let i = 0; i < 10; i++) {
       model.queue.push({
-        sentences: ["What's the address?"],
-        tools: [{ id: `tu_${i}`, name: "record_details", input: { situation: "flood" } }],
+        // Distinct, so the cap is what stops this and not the repeat filter.
+        sentences: [`Booking that now, attempt ${i}.`],
+        tools: [
+          {
+            id: `tu_${i}`,
+            name: "book_job",
+            input: { confirmed_address: "400 W St", confirmed_callback: "5125551234" },
+          },
+        ],
       });
     }
 
     speak(session);
-    recogniser.emit("my basement is flooded");
+    recogniser.emit("just send someone");
 
     await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(1));
-    // Let any further round it was going to run actually run.
     await new Promise((r) => setTimeout(r, 50));
 
     // The greeting, plus at most one utterance per round.
     expect(synthesiser.spoken.length).toBeLessThanOrEqual(4);
     expect(model.queue.length).toBeGreaterThan(5);
+  });
+
+  it("does not go back to the model just to comment on a filing", async () => {
+    // record_details returns which keys were stored and what is still missing.
+    // There is nothing in that a caller wants read to them, and a model given
+    // the chance to comment tends to re-ask the question it just asked, which
+    // is what a real caller heard.
+    const { session, recogniser, model } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+
+    model.queue.push({
+      sentences: ["Got it. And the address?"],
+      tools: [{ id: "tu_1", name: "record_details", input: { caller_name: "Dana" } }],
+    });
+
+    speak(session);
+    recogniser.emit("Dana Whitfield");
+
+    await vi.waitFor(() => expect(session.snapshot.collected["caller_name"]).toBe("Dana"));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // One caller turn, one model call.
+    expect(model.prompts.length).toBe(1);
+  });
+});
+
+describe("Session: never repeats itself or goes quiet", () => {
+  it("drops a sentence it has already said this turn", async () => {
+    const { session, recogniser, model, synthesiser } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+
+    model.queue.push({
+      sentences: ["What is the address of the property?"],
+      tools: [
+        {
+          id: "tu_1",
+          name: "book_job",
+          input: { confirmed_address: "", confirmed_callback: "" },
+        },
+      ],
+    });
+    // The follow-up round, where a model with nothing new to say repeats itself.
+    model.queue.push({ sentences: ["What is the address of the property?"] });
+
+    speak(session);
+    recogniser.emit("my basement is flooded");
+    await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(1));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const asked = synthesiser.spoken.filter((line) => line.includes("address of the property"));
+    expect(asked).toHaveLength(1);
+  });
+
+  it("acknowledges a second ask instead of repeating it word for word", async () => {
+    const { session, recogniser, model, synthesiser } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+
+    model.queue.push({ sentences: ["What is the address of the property?"] });
+    model.queue.push({ sentences: ["What is the address of the property?"] });
+    model.queue.push({ sentences: ["What is the address of the property?"] });
+
+    for (const said of ["my basement is flooded", "two hours ago", "hello?"]) {
+      speak(session);
+      recogniser.emit(said);
+      await vi.waitFor(() => expect(synthesiser.spoken.length).toBeGreaterThan(0));
+      await new Promise((r) => setTimeout(r, 30));
+    }
+
+    const asks = synthesiser.spoken.filter((line) => line.includes("address of the property"));
+    expect(asks[0]).toBe("What is the address of the property?");
+    expect(asks[1]).toMatch(/^Sorry, I still need this one\./);
+    // The third identical ask is dropped rather than said a third time.
+    expect(asks).toHaveLength(2);
+  });
+
+  it("goes back to the model when it filed something and said nothing", async () => {
+    // Some models answer most turns with a tool call and no words at all, and
+    // expect the speaking turn to come after the tool result. Skipping that
+    // round leaves the caller in silence for the whole intake.
+    const { session, recogniser, model, synthesiser } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+    const spokenBefore = synthesiser.spoken.length;
+
+    model.queue.push({
+      sentences: [],
+      tools: [{ id: "tu_1", name: "record_details", input: { caller_name: "Dana" } }],
+    });
+    model.queue.push({ sentences: ["Thanks Dana. What's the address?"] });
+
+    speak(session);
+    recogniser.emit("Dana Whitfield");
+
+    await vi.waitFor(() => expect(model.prompts.length).toBe(2));
+    expect(synthesiser.spoken.slice(spokenBefore)).toEqual(["Thanks Dana. What's the address?"]);
+  });
+
+  it("asks the next question itself when the model says nothing at all", async () => {
+    // The model answered with a tool call and no words. Without a backstop the
+    // caller sits in silence wondering whether the line dropped; on a real call
+    // they eventually said "hello?" into it.
+    const { session, recogniser, model, synthesiser } = setup();
+    await session.start();
+    session.onMark("utterance-end");
+    const spokenBefore = synthesiser.spoken.length;
+
+    model.queue.push({
+      sentences: [],
+      tools: [{ id: "tu_1", name: "record_details", input: { caller_name: "Dana" } }],
+    });
+
+    speak(session);
+    recogniser.emit("Dana Whitfield");
+
+    await vi.waitFor(() => expect(synthesiser.spoken.length).toBeGreaterThan(spokenBefore));
+    expect(synthesiser.spoken[spokenBefore]).toBeTruthy();
   });
 });
 

@@ -26,6 +26,14 @@ export class ScriptedModel implements LanguageModel {
    * question ahead of the caller.
    */
   private lastFiled = "";
+  /**
+   * Whether it has already booked.
+   *
+   * Without this it answers every turn after the booking by booking again, and
+   * says "let me get this booked for you" a second time. A caller hearing that
+   * has no idea whether anything happened the first time.
+   */
+  private booked = false;
 
   respond(params: {
     system: string;
@@ -40,6 +48,8 @@ export class ScriptedModel implements LanguageModel {
     // follow-up is both simpler and closer to what a real turn sounds like.
     const last = params.history[params.history.length - 1];
     if (last?.role === "tool_result") return this.reply([], []);
+
+    if (this.booked) return this.reply(["You're all set. Someone will call you shortly."], []);
 
     const lastUser = [...params.history].reverse().find((t) => t.role === "user");
     const heard = lastUser && "content" in lastUser ? lastUser.content : "";
@@ -65,6 +75,7 @@ export class ScriptedModel implements LanguageModel {
       : ["That's everything I need.", "Let me get this booked for you."];
 
     if (!upcoming) {
+      this.booked = true;
       tools.push({
         id: "t_book",
         name: "book_job",
