@@ -63,7 +63,7 @@ media leg:
 
 2. **Placement is not controllable.** An edge runtime may place the isolate
    near the *caller*, but every hop that matters goes to Twilio's media edge,
-   Deepgram, Cartesia and the Anthropic API. Being close to the caller and far
+   Deepgram, Cartesia and OpenRouter. Being close to the caller and far
    from those four is a net loss.
 
 So the split is: Fly holds the socket and the real-time loop, pinned to `iad`

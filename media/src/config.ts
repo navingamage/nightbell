@@ -7,13 +7,17 @@
  * deploy time is enormously preferable to failing at 2am on someone's flood.
  */
 
+import { DEFAULT_MODEL } from "./providers/openrouter.js";
+
 export interface Config {
   port: number;
   publicHost: string;
   deepgramApiKey: string;
   cartesiaApiKey: string;
   cartesiaVoiceId: string;
-  anthropicApiKey: string;
+  openrouterApiKey: string;
+  /** OpenRouter model slug, e.g. `google/gemini-2.5-flash`. */
+  openrouterModel: string;
   twilioAccountSid: string;
   twilioAuthToken: string;
   /** Base URL of the Cloudflare control plane. */
@@ -35,7 +39,11 @@ export function loadConfig(): Config {
     deepgramApiKey: required("DEEPGRAM_API_KEY"),
     cartesiaApiKey: required("CARTESIA_API_KEY"),
     cartesiaVoiceId: required("CARTESIA_VOICE_ID"),
-    anthropicApiKey: required("ANTHROPIC_API_KEY"),
+    openrouterApiKey: required("OPENROUTER_API_KEY"),
+    // The one value here with a default. Which model answers the phone is a
+    // question of price and time-to-first-token on the day, so it is meant to
+    // be changed without a code change; the key it is billed to is not.
+    openrouterModel: process.env["OPENROUTER_MODEL"] || DEFAULT_MODEL,
     twilioAccountSid: required("TWILIO_ACCOUNT_SID"),
     twilioAuthToken: required("TWILIO_AUTH_TOKEN"),
     controlPlaneUrl: required("CONTROL_PLANE_URL"),

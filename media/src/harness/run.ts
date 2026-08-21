@@ -11,17 +11,20 @@
  * fired, how long the caller waited, or what the model was told. Here all of it
  * is on screen next to the words that caused it.
  *
- *   npm run harness              # every scenario, faked model
- *   npm run harness sewage-2am   # one scenario
- *   npm run harness --live       # real Claude, needs ANTHROPIC_API_KEY
+ *   npm run harness                      # every scenario, faked model
+ *   npm run harness sewage-2am           # one scenario
+ *   npm run harness --live               # a real model, needs OPENROUTER_API_KEY
+ *   npm run harness --live --model=x/y   # a different model, same scenarios
  *
- * `--live` reads the key from the environment or from `media/.env`.
+ * `--live` reads the key from the environment or from `media/.env`. The model
+ * defaults to OPENROUTER_MODEL, then to the provider's own default; running the
+ * same six scenarios against a candidate is how a model gets chosen.
  */
 
 import { encode } from "../call/audio.js";
 import { type CallRecord, Session, type TenantConfig } from "../call/session.js";
 import { loadDotEnv } from "../env.js";
-import { ClaudeModel } from "../providers/claude.js";
+import { DEFAULT_MODEL, OpenRouterModel } from "../providers/openrouter.js";
 import type {
   ConversationTurn,
   LanguageModel,
@@ -93,8 +96,8 @@ class PrintingSynthesiser implements SpeechSynthesiser {
 /**
  * A model stand-in that follows the intake script.
  *
- * Not an attempt to imitate Claude — it exists so the harness runs with no API
- * key and so the *deterministic* parts of the system (triage, endpointing,
+ * Not an attempt to imitate a real model. It exists so the harness runs with no
+ * API key, and so the *deterministic* parts of the system (triage, endpointing,
  * booking gates, transfer paths) can be watched without model variance in the
  * way. Use --live to put the real model in.
  */
@@ -172,12 +175,19 @@ function acknowledge(heard: string): string {
   return "Got it.";
 }
 
-async function runScenario(scenario: Scenario, live: boolean): Promise<boolean> {
+async function runScenario(
+  scenario: Scenario,
+  live: boolean,
+  modelName: string,
+): Promise<boolean> {
   const recogniser = new ScriptedRecogniser();
   const synthesiser = new PrintingSynthesiser();
   const settle = settler(synthesiser, live);
   const model: LanguageModel = live
-    ? new ClaudeModel({ apiKey: process.env["ANTHROPIC_API_KEY"] ?? "" })
+    ? new OpenRouterModel({
+        apiKey: process.env["OPENROUTER_API_KEY"] ?? "",
+        model: modelName,
+      })
     : new ScriptedModel();
 
   let saved: CallRecord | null = null;
@@ -247,6 +257,7 @@ async function runScenario(scenario: Scenario, live: boolean): Promise<boolean> 
   drain();
 
   let previousUrgency = "routine";
+  let previousFields = new Set<string>();
 
   for (const utterance of scenario.utterances) {
     if (transferredTo) break;
@@ -263,6 +274,17 @@ async function runScenario(scenario: Scenario, live: boolean): Promise<boolean> 
     drain();
 
     const snapshot = session.snapshot;
+
+    // What the model actually filed this turn. On a live run this is the first
+    // thing to look at when the agent asks a question the caller already
+    // answered: the intake only advances through record_details, so a turn that
+    // files nothing is a turn the model heard and dropped.
+    const filed = Object.entries(snapshot.collected).filter(([key]) => !previousFields.has(key));
+    for (const [key, value] of filed) {
+      console.log(`  ${C.blue}filed${C.reset}   ${C.dim}${key} = ${JSON.stringify(value)}${C.reset}`);
+    }
+    previousFields = new Set(Object.keys(snapshot.collected));
+
     if (snapshot.triage.urgency !== previousUrgency) {
       const fired = snapshot.triage.hits.map((h) => h.ruleId).join(", ");
       console.log(
@@ -383,10 +405,15 @@ async function main(): Promise<void> {
   const live = args.includes("--live");
   const wanted = args.find((a) => !a.startsWith("--"));
 
-  if (live && !process.env["ANTHROPIC_API_KEY"]) {
-    console.error("--live needs ANTHROPIC_API_KEY");
+  if (live && !process.env["OPENROUTER_API_KEY"]) {
+    console.error("--live needs OPENROUTER_API_KEY");
     process.exit(1);
   }
+
+  const modelName =
+    args.find((a) => a.startsWith("--model="))?.slice("--model=".length) ||
+    process.env["OPENROUTER_MODEL"] ||
+    DEFAULT_MODEL;
 
   const scenarios = wanted
     ? [findScenario(wanted)].filter((s): s is Scenario => Boolean(s))
@@ -400,12 +427,12 @@ async function main(): Promise<void> {
 
   console.log(
     `${C.bold}nightbell harness${C.reset} ${C.dim}— ${scenarios.length} scenario(s), ` +
-      `${live ? "live model" : "scripted model"}${C.reset}`,
+      `${live ? modelName : "scripted model"}${C.reset}`,
   );
 
   let passed = 0;
   for (const scenario of scenarios) {
-    if (await runScenario(scenario, live)) passed++;
+    if (await runScenario(scenario, live, modelName)) passed++;
   }
 
   console.log(`\n${C.bold}${"─".repeat(72)}${C.reset}`);

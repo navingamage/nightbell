@@ -13,7 +13,7 @@
  * to care.
  *
  * Values already present in the environment win. `loadEnvFile` does not
- * overwrite them, so an explicit `ANTHROPIC_API_KEY=... npm run harness`
+ * overwrite them, so an explicit `OPENROUTER_API_KEY=... npm run harness`
  * still beats whatever is in the file.
  */
 

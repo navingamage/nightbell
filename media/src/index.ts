@@ -14,8 +14,8 @@ import { loadConfig } from "./config.js";
 import { ControlPlane } from "./control.js";
 import { loadDotEnv } from "./env.js";
 import { CartesiaSynthesiser } from "./providers/cartesia.js";
-import { ClaudeModel } from "./providers/claude.js";
 import { DeepgramRecogniser } from "./providers/deepgram.js";
+import { OpenRouterModel } from "./providers/openrouter.js";
 
 loadDotEnv();
 const config = loadConfig();
@@ -124,7 +124,10 @@ async function startSession(
       apiKey: config.cartesiaApiKey,
       voiceId: config.cartesiaVoiceId,
     }),
-    model: new ClaudeModel({ apiKey: config.anthropicApiKey }),
+    model: new OpenRouterModel({
+      apiKey: config.openrouterApiKey,
+      model: config.openrouterModel,
+    }),
     persist: (record) => control.persistCall(record),
     transfer: (sid, to, reason) => control.transfer(sid, to, reason),
   });

@@ -12,9 +12,10 @@ install:
 demo:
 	cd media && npm run harness
 
-# The same scenarios against the real model. Needs ANTHROPIC_API_KEY.
+# The same scenarios against a real model. Needs OPENROUTER_API_KEY.
+# Add MODEL=vendor/name to try a different one.
 demo-live:
-	cd media && npm run harness -- --live
+	cd media && npm run harness -- --live $(if $(MODEL),--model=$(MODEL))
 
 test: test-media test-control
 
