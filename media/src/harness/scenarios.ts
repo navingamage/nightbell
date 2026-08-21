@@ -133,7 +133,3 @@ export const SCENARIOS: Scenario[] = [
     expect: { urgency: "routine", outcome: "transferred" },
   },
 ];
-
-export function findScenario(id: string): Scenario | undefined {
-  return SCENARIOS.find((s) => s.id === id);
-}

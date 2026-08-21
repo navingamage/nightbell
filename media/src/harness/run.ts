@@ -15,6 +15,8 @@
  *   npm run harness sewage-2am           # one scenario
  *   npm run harness --live               # a real model, needs OPENROUTER_API_KEY
  *   npm run harness --live --model=x/y   # a different model, same scenarios
+ *   npm run harness --recorded           # only calls recorded from real sessions
+ *   npm run harness --builtin            # only the six written scenarios
  *
  * `--live` reads the key from the environment or from `media/.env`. The model
  * defaults to OPENROUTER_MODEL, then to the provider's own default; running the
@@ -34,7 +36,8 @@ import {
   settler,
 } from "./fakes.js";
 import { ScriptedModel } from "./scripted-model.js";
-import { SCENARIOS, type Scenario, findScenario } from "./scenarios.js";
+import { SCENARIOS, type Scenario } from "./scenarios.js";
+import { loadRecordings } from "./recordings.js";
 
 const C = {
   reset: "\x1b[0m",
@@ -60,7 +63,7 @@ async function runScenario(
   // rather than paying the worst case on every turn of every scenario.
   const settle = live
     ? settler(synthesiser, { floorMs: 3_000, quietMs: 2_500 })
-    : settler(synthesiser, { floorMs: 400, quietMs: 1 });
+    : settler(synthesiser, { floorMs: 400, quietMs: 200 });
   const model: LanguageModel = live
     ? new OpenRouterModel({
         apiKey: process.env["OPENROUTER_API_KEY"] ?? "",
@@ -111,17 +114,49 @@ async function runScenario(
   let previousUrgency = "routine";
   let previousFields = new Set<string>();
 
+  /**
+   * Two things that are wrong on every call, whatever the scenario expects.
+   *
+   * Silence, because a caller who gets no reply has no way to know the line is
+   * still up, and on a real call the caller eventually said "hello?" into it.
+   * And repetition, because an agent that asks the same question twice in a row
+   * is the most obvious tell there is that nobody is listening.
+   *
+   * Neither is visible in the urgency or the outcome, which is why both calls
+   * that produced them still passed their scenarios.
+   */
+  const manners: string[] = [];
+  const askedBefore = new Set<string>();
+
   for (const utterance of scenario.utterances) {
     if (transferredTo) break;
 
     console.log(`  ${C.yellow}caller${C.reset}  ${utterance}`);
     const startedAt = performance.now();
+    const spokenBefore = synthesiser.lines.length;
 
     openTurn((frame) => session.onAudio(frame));
     recogniser.say(utterance);
 
     await settle();
     drain();
+
+    const thisTurn = synthesiser.lines.slice(spokenBefore);
+    if (thisTurn.length === 0 && !transferredTo) {
+      manners.push(`said nothing after "${utterance}"`);
+    }
+    const seen = new Set<string>();
+    for (const line of thisTurn) {
+      const key = line.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      // Any line twice in one turn, or any *question* twice in the call. An
+      // acknowledgement repeating across turns is what people actually sound
+      // like; a question repeating is not.
+      if (seen.has(key) || (line.trimEnd().endsWith("?") && askedBefore.has(key))) {
+        manners.push(`repeated "${line}" word for word`);
+      }
+      seen.add(key);
+      if (line.trimEnd().endsWith("?")) askedBefore.add(key);
+    }
 
     const snapshot = session.snapshot;
 
@@ -181,6 +216,7 @@ async function runScenario(
   for (const rule of scenario.expect.rules ?? []) {
     if (!firedRules.has(rule)) problems.push(`rule ${rule} did not fire`);
   }
+  problems.push(...manners);
 
   const latencies = session.snapshot.turnLatenciesMs;
   if (latencies.length > 0) {
@@ -214,13 +250,27 @@ async function main(): Promise<void> {
     process.env["OPENROUTER_MODEL"] ||
     DEFAULT_MODEL;
 
+  // Recorded calls are scenarios with provenance, so they run through exactly
+  // the same path. A malformed one throws rather than being skipped: a
+  // regression test that quietly stops running still reports green.
+  const recorded = await loadRecordings();
+  const known = args.includes("--recorded")
+    ? recorded
+    : args.includes("--builtin")
+      ? SCENARIOS
+      : [...SCENARIOS, ...recorded];
+
   const scenarios = wanted
-    ? [findScenario(wanted)].filter((s): s is Scenario => Boolean(s))
-    : SCENARIOS;
+    ? known.filter((s) => s.id === wanted)
+    : known;
 
   if (scenarios.length === 0) {
-    console.error(`unknown scenario: ${wanted}`);
-    console.error(`known: ${SCENARIOS.map((s) => s.id).join(", ")}`);
+    if (wanted) {
+      console.error(`unknown scenario: ${wanted}`);
+      console.error(`known: ${known.map((s) => s.id).join(", ")}`);
+    } else {
+      console.error("no scenarios to run");
+    }
     process.exit(1);
   }
 

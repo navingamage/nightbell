@@ -10,6 +10,7 @@
  *   npm run call                     # real model, needs OPENROUTER_API_KEY
  *   npm run call -- --model=x/y      # a different model
  *   npm run call -- --scripted       # no key, no spend, the stand-in model
+ *   npm run call -- --save some-id   # keep the call as a replayable test
  *
  * You type what the caller says. Everything the agent does is printed beside
  * it: which triage rule fired and on which words, what it filed and under which
@@ -19,6 +20,12 @@
  * The only thing faked above the session is your voice. Below it, the same
  * `Session` runs that a Twilio socket would drive, including the turn-taking
  * and the mark accounting.
+ *
+ * `--save` writes what you said to `media/recordings/`, with the outcome the
+ * call actually reached as its expectations, and `npm run harness` replays it
+ * from then on. A call that went wrong is worth saving precisely because it
+ * went wrong: edit `expect` to say what should have happened, and the file is a
+ * failing test until it does.
  */
 
 import { createInterface } from "node:readline/promises";
@@ -28,6 +35,7 @@ import { loadDotEnv } from "../env.js";
 import { REQUIRED_KEYS } from "../call/session.js";
 import { DEFAULT_MODEL, OpenRouterModel } from "../providers/openrouter.js";
 import type { LanguageModel } from "../providers/types.js";
+import { fromCallRecord, saveRecording } from "./recordings.js";
 import { ScriptedModel } from "./scripted-model.js";
 import {
   PrintingSynthesiser,
@@ -55,6 +63,8 @@ async function main(): Promise<void> {
 
   const args = process.argv.slice(2);
   const scripted = args.includes("--scripted");
+  const saveAs = args.find((a) => a.startsWith("--save="))?.slice("--save=".length)
+    ?? (args.includes("--save") ? args[args.indexOf("--save") + 1] : undefined);
   const modelName =
     args.find((a) => a.startsWith("--model="))?.slice("--model=".length) ||
     process.env["OPENROUTER_MODEL"] ||
@@ -116,20 +126,28 @@ async function main(): Promise<void> {
   drain();
 
   const rl = createInterface({ input: stdin, output: stdout });
+  // Ctrl-D, or the end of piped input, closes stdin. The pending question()
+  // then never settles, the event loop empties, and the process exits without
+  // reaching the ticket or the save. Racing against the close event turns that
+  // into an ordinary hang-up.
+  const hungUp = new Promise<null>((resolve) => {
+    rl.once("close", () => resolve(null));
+  });
   let previousUrgency = "routine";
   let previousFields = new Set<string>();
 
   for (;;) {
     if (transferred) break;
 
-    // Ctrl-D closes stdin, and a closed readline throws rather than resolving.
-    // That is a hang-up, which is a perfectly ordinary way for a call to end.
-    let said: string;
+    let heard: string | null;
     try {
-      said = (await rl.question(`  ${C.yellow}caller${C.reset}  `)).trim();
+      heard = await Promise.race([rl.question(`  ${C.yellow}caller${C.reset}  `), hungUp]);
     } catch {
       break;
     }
+    if (heard === null) break;
+
+    const said = heard.trim();
     if (!said) break;
 
     const startedAt = performance.now();
@@ -172,14 +190,32 @@ async function main(): Promise<void> {
 
   // Read the outcome before closing: close() marks an unfinished call abandoned,
   // which is right for a caller who hung up but would hide where this one got to.
-  const outcome = session.snapshot.outcome;
-  const urgency = session.snapshot.triage.urgency;
-  const collected = session.snapshot.collected;
-  const latencies = session.snapshot.turnLatenciesMs;
+  const snapshot = session.snapshot;
+  const outcome = snapshot.outcome;
+  const urgency = snapshot.triage.urgency;
+  const collected = snapshot.collected;
+  const latencies = snapshot.turnLatenciesMs;
   await session.close();
   void (saved as CallRecord | null);
 
   printTicket({ outcome, urgency, collected, latencies });
+
+  if (saveAs) {
+    const path = await saveRecording(
+      fromCallRecord(
+        { ...snapshot, outcome },
+        {
+          id: saveAs,
+          title: saveAs.replace(/-/g, " "),
+          note: "Recorded from an interactive session. Edit `expect` to say what should have happened.",
+          ...(scripted ? {} : { model: modelName }),
+          source: "npm run call",
+        },
+      ),
+    );
+    console.log(`  ${C.dim}saved to ${path}${C.reset}`);
+    console.log(`  ${C.dim}npm run harness ${saveAs}${C.reset}\n`);
+  }
 }
 
 /** The ticket, which is the only part of this a contractor ever sees. */

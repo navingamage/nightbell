@@ -66,6 +66,7 @@ media/      Real-time media server (Node/TypeScript, Fly.io)
   src/intake/     intake script, triage rules, model tools
   src/providers/  Deepgram, Cartesia, OpenRouter, behind swappable interfaces
   src/harness/    the scripted scenarios and the interactive caller
+  recordings/     real calls, replayable as tests
 control/    Control plane (Cloudflare Pages Functions + D1)
 site/       Marketing site (static, its own Pages project)
 docs/       Design notes
@@ -97,6 +98,29 @@ cent.
 `make call SCRIPTED=1` runs the same thing with no key and no spend, against the
 stand-in model. `make call MODEL=vendor/name` tries a different model.
 
+## Calls that already happened
+
+The six written scenarios cover the calls we thought of. Real callers do not
+confine themselves to those: they ask to be put through to a plumber, they
+answer a question that was not asked, they say "hello?" into a silence. Every one
+of those is a call the agent either handled or did not, and once it is written
+down it is a test.
+
+```bash
+make call SAVE=plumber-referral      # take a call, keep it
+make replay                          # replay every recorded call
+make replay LIVE=1                   # against the real model, which is the point
+```
+
+A recording is a scenario with provenance, so it runs through exactly the same
+path as a written one, and `make demo` picks it up automatically. Saving seeds
+the expectations from what the call actually did, which matters most when the
+call went wrong: edit `expect` to say what should have happened, and the file is
+a failing test until it does.
+
+`media/recordings/plumber-referral.json` is the first one, and it is the call
+that produced the last three fixes in here.
+
 ## Seeing it work, with no API key and no phone number
 
 ```bash
@@ -120,13 +144,18 @@ on which words, when urgency changed, and time-to-first-audio per turn:
                       increases the loss
 ```
 
-Against a live model the same scenarios run at five or six out of six rather
-than always six. The variance is the script, not the agent: a caller who answers
-in fixed order cannot answer a question the model decided to ask twice, so a run
-where it re-asks one thing reaches the read-back with no turns left to confirm
-it. What the scripts do measure exactly is the machinery, since triage,
-escalation, the transfer paths and the booking gate do not vary between runs.
-Judging the conversation is what `make call` is for.
+Against a live model the variance in these runs is the script rather than the
+agent: a caller who answers in fixed order cannot answer a question the model
+decided to ask twice, so a run where it re-asks one thing can reach the read-back
+with no turns left to confirm it. What the scripts measure exactly is the
+machinery, since triage, escalation, the transfer paths and the booking gate do
+not vary between runs.
+
+Two things are checked on every scenario regardless of what it expects: that the
+agent never goes silent on a caller turn, and that it never asks the same
+question twice word for word. Both were real failures, and neither is visible in
+the urgency or the outcome, which is how a call that was unusable to listen to
+still passed everything it was measured on.
 
 The scenarios in `media/src/harness/scenarios.ts` are the calls that matter
 commercially and the ones that matter for safety: the 2am sewage backup that has
@@ -155,7 +184,7 @@ whole process and every other call on it. All five are regression-tested now.
 ## Running the tests
 
 ```bash
-make test          # 147 tests, no API keys, every provider is faked
+make test          # 153 tests, no API keys, every provider is faked
 make typecheck
 ```
 

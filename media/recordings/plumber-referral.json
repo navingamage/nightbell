@@ -1,0 +1,26 @@
+{
+  "id": "plumber-referral",
+  "title": "Caller asks for a plumber, then gets no reply",
+  "note": "A real call. The agent went silent three times, the caller said \"hello?\" into the gap, and it asked the same question twice in two separate turns. Every one of those is invisible in the urgency and the outcome, which is why the call still reached the right classification while being unusable.",
+  "recordedAt": "2026-08-21T18:40:00.000Z",
+  "model": "google/gemini-2.5-flash",
+  "source": "npm run call",
+  "utterances": [
+    "6478545855",
+    "david",
+    "i need help with a water leak, the whole basement is flodded. Can you put me in touch with closest plumber available?",
+    "its still coming",
+    "from the basement joint",
+    "2 hours ago",
+    "hello?",
+    "252 Example Ave",
+    "home",
+    "ok thank you",
+    "basement"
+  ],
+  "expect": {
+    "urgency": "dispatch_now",
+    "outcome": "in_progress",
+    "rules": ["water.active"]
+  }
+}
