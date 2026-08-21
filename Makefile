@@ -1,4 +1,4 @@
-.PHONY: install demo demo-live test test-media test-control typecheck dev deploy-media deploy-control migrate clean
+.PHONY: install demo demo-live call test test-media test-control typecheck dev deploy-media deploy-control migrate clean
 
 # Everything below runs with no API keys. The provider adapters are faked in
 # tests, so the call loop, triage and turn-taking are all exercised offline.
@@ -16,6 +16,12 @@ demo:
 # Add MODEL=vendor/name to try a different one.
 demo-live:
 	cd media && npm run harness -- --live $(if $(MODEL),--model=$(MODEL))
+
+# Take the call yourself: you type what the caller says, and the agent's
+# working is printed next to it. Needs OPENROUTER_API_KEY. Add SCRIPTED=1 to
+# run it with no key and no spend.
+call:
+	cd media && npm run call -- $(if $(MODEL),--model=$(MODEL)) $(if $(SCRIPTED),--scripted)
 
 test: test-media test-control
 

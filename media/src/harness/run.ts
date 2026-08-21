@@ -3,7 +3,7 @@
  *
  * Drives a real `Session` through a scripted call and prints the conversation,
  * the triage decisions, and the latency budget as it happens. Everything below
- * the session is faked — no phone number, no carrier, and by default no API
+ * the session is faked: no phone number, no carrier, and by default no API
  * keys at all.
  *
  * The point is to make the parts of this system that are normally invisible
@@ -21,21 +21,19 @@
  * same six scenarios against a candidate is how a model gets chosen.
  */
 
-import { encode } from "../call/audio.js";
-import { type CallRecord, Session, type TenantConfig } from "../call/session.js";
+import { type CallRecord, Session } from "../call/session.js";
 import { loadDotEnv } from "../env.js";
 import { DEFAULT_MODEL, OpenRouterModel } from "../providers/openrouter.js";
-import type {
-  ConversationTurn,
-  LanguageModel,
-  ModelResponse,
-  SpeechRecogniser,
-  SpeechSynthesiser,
-  ToolCall,
-  ToolDefinition,
-  Transcript,
-} from "../providers/types.js";
-import { nextField } from "../intake/schema.js";
+import type { LanguageModel } from "../providers/types.js";
+import {
+  PrintingSynthesiser,
+  TENANT,
+  TypedRecogniser,
+  fakeCarrier,
+  openTurn,
+  settler,
+} from "./fakes.js";
+import { ScriptedModel } from "./scripted-model.js";
 import { SCENARIOS, type Scenario, findScenario } from "./scenarios.js";
 
 const C = {
@@ -50,139 +48,19 @@ const C = {
   cyan: "\x1b[36m",
 };
 
-const TENANT: TenantConfig = {
-  tenantId: "t_demo",
-  businessName: "Buckeye Restoration",
-  serviceArea: "Austin and the surrounding counties",
-  timezone: "America/Chicago",
-  onCallNumber: "+15125550199",
-  greeting: "Buckeye Restoration, this is the after-hours line. What's the best number to reach you on, in case we get cut off?",
-};
-
-/** Recogniser that emits whatever the script feeds it. */
-class ScriptedRecogniser implements SpeechRecogniser {
-  private handler: ((t: Transcript) => void) | null = null;
-  write(): void {}
-  async finish(): Promise<void> {}
-  close(): void {}
-  onTranscript(h: (t: Transcript) => void): void {
-    this.handler = h;
-  }
-  onError(): void {}
-  say(text: string): void {
-    this.handler?.({ text, isFinal: true, speechFinal: true });
-  }
-}
-
-/** Synthesiser that prints instead of speaking, and reports realistic timing. */
-class PrintingSynthesiser implements SpeechSynthesiser {
-  lines: string[] = [];
-  async *speak(text: string, signal: AbortSignal): AsyncIterable<Buffer> {
-    this.lines.push(text);
-    // Cartesia's time-to-first-audio, roughly, so the printed latency figures
-    // mean something rather than being instant.
-    await new Promise((r) => setTimeout(r, 110));
-    if (signal.aborted) return;
-    // One frame per ~60ms of speech, at a natural speaking rate.
-    const frames = Math.max(1, Math.round(text.length / 14));
-    for (let i = 0; i < frames; i++) {
-      if (signal.aborted) return;
-      yield encode(new Int16Array(160));
-    }
-  }
-  close(): void {}
-}
-
-/**
- * A model stand-in that follows the intake script.
- *
- * Not an attempt to imitate a real model. It exists so the harness runs with no
- * API key, and so the *deterministic* parts of the system (triage, endpointing,
- * booking gates, transfer paths) can be watched without model variance in the
- * way. Use --live to put the real model in.
- */
-class ScriptedModel implements LanguageModel {
-  private collected: Record<string, unknown> = {};
-  /**
-   * The session calls the model a second time after tool results come back, so
-   * it can say something about them. A real model handles that naturally; this
-   * stand-in has to remember which utterance it already filed, or it records
-   * the same sentence against two different fields and the intake drifts one
-   * question ahead of the caller.
-   */
-  private lastFiled = "";
-
-  respond(params: {
-    system: string;
-    history: ConversationTurn[];
-    tools: ToolDefinition[];
-    signal: AbortSignal;
-  }): ModelResponse {
-    const lastUser = [...params.history].reverse().find((t) => t.role === "user");
-    const heard = lastUser && "content" in lastUser ? lastUser.content : "";
-
-    if (/talk to (an actual )?(a )?person|speak to someone|real human/i.test(heard)) {
-      return this.reply(["Of course, let me get someone for you."], [
-        { id: "t1", name: "transfer_to_human", input: { reason: "caller asked for a person" } },
-      ]);
-    }
-
-    // Attribute the answer to whatever field was outstanding, then ask the next.
-    const field = nextField(this.collected);
-    const tools: ToolCall[] = [];
-    if (field && heard && heard !== this.lastFiled) {
-      this.collected[field.key] = heard;
-      this.lastFiled = heard;
-      tools.push({ id: `t_${field.key}`, name: "record_details", input: { [field.key]: heard } });
-    }
-
-    const upcoming = nextField(this.collected);
-    const sentences = upcoming
-      ? [acknowledge(heard), upcoming.prompt]
-      : ["That's everything I need.", "Let me get this booked for you."];
-
-    if (!upcoming) {
-      tools.push({
-        id: "t_book",
-        name: "book_job",
-        input: {
-          confirmed_address: String(this.collected["property_address"] ?? ""),
-          confirmed_callback: String(this.collected["callback_number"] ?? ""),
-        },
-      });
-    }
-
-    return this.reply(sentences.filter(Boolean), tools);
-  }
-
-  private reply(sentences: string[], tools: ToolCall[]): ModelResponse {
-    return {
-      sentences: (async function* () {
-        for (const s of sentences) {
-          await new Promise((r) => setTimeout(r, 90)); // token generation
-          yield s;
-        }
-      })(),
-      toolCalls: Promise.resolve(tools),
-    };
-  }
-}
-
-function acknowledge(heard: string): string {
-  if (/sewer|sewage|septic/i.test(heard)) return "Okay, that's a serious one and I'm treating it as an emergency.";
-  if (/still (coming|running|pouring)|can't stop/i.test(heard)) return "Understood, I'm getting someone out to you tonight.";
-  if (/newborn|baby|infant/i.test(heard)) return "Thanks for telling me that, it changes how quickly we need to be there.";
-  return "Got it.";
-}
-
 async function runScenario(
   scenario: Scenario,
   live: boolean,
   modelName: string,
 ): Promise<boolean> {
-  const recogniser = new ScriptedRecogniser();
+  const recogniser = new TypedRecogniser();
   const synthesiser = new PrintingSynthesiser();
-  const settle = settler(synthesiser, live);
+  // A scripted model answers in a fixed ~400ms; a real one does not, and a turn
+  // that files a tool call costs two round trips. Wait for silence in that case
+  // rather than paying the worst case on every turn of every scenario.
+  const settle = live
+    ? settler(synthesiser, { floorMs: 3_000, quietMs: 2_500 })
+    : settler(synthesiser, { floorMs: 400, quietMs: 1 });
   const model: LanguageModel = live
     ? new OpenRouterModel({
         apiKey: process.env["OPENROUTER_API_KEY"] ?? "",
@@ -194,36 +72,10 @@ async function runScenario(
   let transferredTo: string | null = null;
   let transferReason = "";
 
-  /**
-   * A stand-in for the carrier socket that also plays Twilio's part.
-   *
-   * Twilio sends a `mark` event back once the audio preceding it has actually
-   * finished playing, and that event is the only thing that tells the turn
-   * controller the agent has stopped talking. Swallowing it — as an inert fake
-   * socket does — leaves the controller believing the agent is still speaking
-   * forever, so every subsequent caller turn is classified as a barge-in, the
-   * generation is aborted, and its tool calls are discarded. The intake then
-   * silently collects nothing.
-   *
-   * Echoing the mark back is what makes this a fake of Twilio rather than a
-   * fake of a socket.
-   */
-  let deliverMark: ((name: string) => void) | null = null;
-  const socket = {
-    OPEN: 1 as const,
-    readyState: 1 as const,
-    send: (raw: string) => {
-      const parsed = JSON.parse(raw) as { event?: string; mark?: { name?: string } };
-      if (parsed.event === "mark" && parsed.mark?.name) {
-        const name = parsed.mark.name;
-        setTimeout(() => deliverMark?.(name), 0);
-      }
-    },
-    close: () => {},
-  };
+  const carrier = fakeCarrier();
 
   const session = new Session({
-    socket: socket as unknown as import("ws").WebSocket,
+    socket: carrier.socket,
     streamSid: "MZ_harness",
     callSid: `CA_${scenario.id}`,
     tenant: TENANT,
@@ -239,7 +91,7 @@ async function runScenario(
     },
   });
 
-  deliverMark = (name) => session.onMark(name);
+  carrier.onMark((name) => session.onMark(name));
 
   console.log(`\n${C.bold}${"─".repeat(72)}${C.reset}`);
   console.log(`${C.bold}${scenario.title}${C.reset}`);
@@ -265,9 +117,7 @@ async function runScenario(
     console.log(`  ${C.yellow}caller${C.reset}  ${utterance}`);
     const startedAt = performance.now();
 
-    // Loud frames open the turn, exactly as carrier audio would.
-    const loud = encode(new Int16Array(160).fill(12000));
-    for (let i = 0; i < 10; i++) session.onAudio(loud);
+    openTurn((frame) => session.onAudio(frame));
     recogniser.say(utterance);
 
     await settle();
@@ -288,7 +138,7 @@ async function runScenario(
     if (snapshot.triage.urgency !== previousUrgency) {
       const fired = snapshot.triage.hits.map((h) => h.ruleId).join(", ");
       console.log(
-        `  ${C.red}${C.bold}⚡ ${snapshot.triage.urgency}${C.reset}${C.red} — ${fired}${C.reset}`,
+        `  ${C.red}${C.bold}⚡ ${snapshot.triage.urgency}${C.reset}${C.red}: ${fired}${C.reset}`,
       );
       for (const hit of snapshot.triage.hits) {
         console.log(`     ${C.dim}"${hit.evidence}" → ${hit.reason}${C.reset}`);
@@ -347,57 +197,6 @@ async function runScenario(
   return false;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Build the "wait for the session to finish reacting" function for a run.
- *
- * The scripted model answers in a fixed ~400ms, so a fixed pause covers it
- * exactly. A live model does not: time to first sentence varies with load, and
- * a turn that files a tool call costs two round trips, with the second reply
- * landing seconds after the first. A fixed pause long enough for that worst
- * case would be paid on every turn of every scenario, and one that isn't long
- * enough fails the scenario for a reason that has nothing to do with the
- * scenario: the assertions read the session before it has finished answering.
- *
- * So for live runs, watch what the agent is actually saying and call the turn
- * settled once it has gone quiet. FLOOR keeps a slow first sentence from being
- * mistaken for silence, and CAP stops a wedged turn from hanging the run.
- */
-function settler(
-  synthesiser: PrintingSynthesiser,
-  live: boolean,
-): () => Promise<void> {
-  if (!live) return () => sleep(400);
-
-  const POLL = 250;
-  const QUIET = 2_500;
-  const FLOOR = 3_000;
-  const CAP = 45_000;
-
-  return async () => {
-    const startedAt = performance.now();
-    let seen = synthesiser.lines.length;
-    let changedAt = startedAt;
-
-    for (;;) {
-      await sleep(POLL);
-      const now = performance.now();
-
-      if (synthesiser.lines.length !== seen) {
-        seen = synthesiser.lines.length;
-        changedAt = now;
-      }
-
-      if (now - startedAt < FLOOR) continue;
-      if (now - changedAt >= QUIET) return;
-      if (now - startedAt >= CAP) return;
-    }
-  };
-}
-
 async function main(): Promise<void> {
   loadDotEnv();
 
@@ -426,7 +225,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `${C.bold}nightbell harness${C.reset} ${C.dim}— ${scenarios.length} scenario(s), ` +
+    `${C.bold}nightbell harness${C.reset} ${C.dim}${scenarios.length} scenario(s), ` +
       `${live ? modelName : "scripted model"}${C.reset}`,
   );
 

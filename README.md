@@ -5,7 +5,7 @@ the call, runs the full intake a restoration job actually needs, decides by
 fixed rules whether someone gets woken up, and books the job or hands the caller
 to a person.
 
-> A *night bell* was the bell mounted outside a shop or a surgery — the one you
+> A *night bell* was the bell mounted outside a shop or a surgery, the one you
 > rang when the door was locked and you needed someone anyway. The thing being
 > rebuilt here is the person who used to be on the other side of it.
 
@@ -14,7 +14,7 @@ to a person.
 A burst supply line at 2am is a five-figure job, and it goes to whoever picks up
 the phone. Answering services take a name and a number, which means the
 contractor still has to call back and conduct the real conversation before
-deciding whether to get dressed — the intake *is* the work, and handing it to
+deciding whether to get dressed. The intake *is* the work, and handing it to
 someone who does not know what category three water is only moves it to 6am.
 
 Picking one vertical is what makes the intake real rather than generic. By the
@@ -28,7 +28,7 @@ ticket a technician can act on without a second call.
 **The model does not decide whether a call is an emergency.**
 
 Urgency comes from a deterministic rule table. The model gets a vote, and that
-vote can only ever *raise* the result — `applyModelOpinion()` takes the maximum
+vote can only ever *raise* the result: `applyModelOpinion()` takes the maximum
 of the two, so a persuasive caller cannot talk the system down out of an
 escalation the rules made. Hard hazards (gas, sparking, injury, active fire)
 transfer to a human without a model round trip happening at all.
@@ -65,6 +65,7 @@ media/      Real-time media server (Node/TypeScript, Fly.io)
   src/call/       audio codec, turn-taking, playback pacing, session
   src/intake/     intake script, triage rules, model tools
   src/providers/  Deepgram, Cartesia, OpenRouter, behind swappable interfaces
+  src/harness/    the scripted scenarios and the interactive caller
 control/    Control plane (Cloudflare Pages Functions + D1)
 site/       Marketing site (static, its own Pages project)
 docs/       Design notes
@@ -75,6 +76,27 @@ duration of a call and pays a latency penalty for every hop, so it is a
 long-lived region-pinned process. Everything else is request-shaped and runs on
 Cloudflare.
 
+## Talking to it yourself
+
+```bash
+source ~/.config/antipode/load-secrets.sh   # OPENROUTER_API_KEY
+make call
+```
+
+You type what the caller says, and the agent's working is printed next to its
+replies: which triage rule fired and on the caller's exact words, what it filed
+and under which field, and how long the caller waited for the first audio. Hang
+up with Ctrl-D and it prints the ticket a technician would be handed, including
+anything still missing.
+
+Everything below the session is the same code a real call runs, including the
+turn-taking and the mark accounting that tells the agent when it has stopped
+talking. The only thing faked above it is your voice. A call costs about half a
+cent.
+
+`make call SCRIPTED=1` runs the same thing with no key and no spend, against the
+stand-in model. `make call MODEL=vendor/name` tries a different model.
+
 ## Seeing it work, with no API key and no phone number
 
 ```bash
@@ -83,7 +105,7 @@ make demo
 ```
 
 That drives a real `Session` through six scripted calls and prints the
-conversation with the machinery exposed next to it — which triage rule fired and
+conversation with the machinery exposed next to it: which triage rule fired and
 on which words, when urgency changed, and time-to-first-audio per turn:
 
 ```
@@ -91,12 +113,20 @@ on which words, when urgency changed, and time-to-first-audio per turn:
           terrible, I think it's the sewer, and it's still coming up
   agent   Okay, that's a serious one and I'm treating it as an emergency.
   agent   What's the address of the property?
-  ⚡ dispatch_now — water.cat3.sewage, water.active
-     "sewer" → Category 3 black water (sewage) — a health hazard that cannot
+  ⚡ dispatch_now: water.cat3.sewage, water.active
+     "sewer" → Category 3 black water (sewage): a health hazard that cannot
                wait for morning
-     "still coming" → Water is still flowing — every minute of delay increases
-                      the loss
+     "still coming" → Water is still flowing, and every minute of delay
+                      increases the loss
 ```
+
+Against a live model the same scenarios run at five or six out of six rather
+than always six. The variance is the script, not the agent: a caller who answers
+in fixed order cannot answer a question the model decided to ask twice, so a run
+where it re-asks one thing reaches the read-back with no turns left to confirm
+it. What the scripts do measure exactly is the machinery, since triage,
+escalation, the transfer paths and the booking gate do not vary between runs.
+Judging the conversation is what `make call` is for.
 
 The scenarios in `media/src/harness/scenarios.ts` are the calls that matter
 commercially and the ones that matter for safety: the 2am sewage backup that has
@@ -173,6 +203,23 @@ the default.
 
 Neither is finished. The remaining failures are the prompt over-weighting
 transfer, not the model, and that is the next thing to fix.
+
+## An actual phone call
+
+Three things the harnesses do not need, because they only fake the audio path:
+speech recognition (Deepgram), speech synthesis (Cartesia), and a number with a
+carrier behind it (Twilio). All three keys go in `media/.env`.
+
+Twilio has to reach the media server over the public internet, so it also needs
+a hostname:
+
+```bash
+cd media && fly deploy                   # or a tunnel, with PUBLIC_HOST set to it
+```
+
+Then point a Twilio number's voice webhook at `POST https://<host>/voice`. The
+TwiML that comes back opens the media WebSocket to the same host, and from there
+it is the same `Session` you already talked to.
 
 ## Deployment
 

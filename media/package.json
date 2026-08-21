@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "harness": "tsx src/harness/run.ts",
+    "call": "tsx src/harness/call.ts",
     "build": "tsc -b",
     "start": "node dist/index.js",
     "test": "vitest run",
